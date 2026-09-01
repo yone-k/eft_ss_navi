@@ -1,0 +1,71 @@
+<Window
+    x:Class="EftSsMap.App.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:EftSsMap.App.Controls"
+    Title="EFT Screenshot Map">
+    <Grid x:Name="RootGrid" Loaded="OnRootLoaded">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Padding="12" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="220" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock VerticalAlignment="Center" Text="監視先" />
+                <TextBox x:Name="WatchDirectoryText" Grid.Column="1" IsReadOnly="True" PlaceholderText="スクリーンショット監視先を選択してください" />
+                <Button Grid.Column="2" Click="OnChooseWatchDirectoryClick" Content="変更" />
+                <TextBlock Grid.Column="3" Margin="12,0,0,0" VerticalAlignment="Center" Text="現在のマップ" />
+                <ComboBox x:Name="ProfileComboBox" Grid.Column="4" DisplayMemberPath="DisplayName" PlaceholderText="プロファイルを選択" SelectionChanged="OnProfileSelectionChanged" />
+                <Button Grid.Column="5" Click="OnNewProfileClick" Content="新規" />
+                <Button Grid.Column="6" Click="OnRecalibrateClick" Content="再校正" />
+                <Button Grid.Column="7" Click="OnDeleteProfileClick" Content="削除" />
+                <Button Grid.Column="8" Click="OnFitMapClick" Content="全体表示" />
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="320" />
+            </Grid.ColumnDefinitions>
+            <controls:MapCanvas x:Name="MapControl" Grid.Column="0" ImagePixelClicked="OnMapImagePixelClicked" />
+            <Border Grid.Column="1" Padding="16" Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1,0,0,0">
+                <ScrollViewer>
+                    <StackPanel Spacing="12">
+                        <TextBlock FontSize="20" FontWeight="SemiBold" Text="現在位置" />
+                        <TextBlock x:Name="CoordinatesText" Text="X, Y, Z: —" TextWrapping="Wrap" />
+                        <TextBlock FontWeight="SemiBold" Text="処理ファイル" />
+                        <TextBlock x:Name="FileNameText" Text="—" TextWrapping="Wrap" />
+                        <Border Padding="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="6">
+                            <TextBlock x:Name="StatusText" AutomationProperties.LiveSetting="Polite" Text="初期化中です。" TextWrapping="Wrap" />
+                        </Border>
+                        <Border x:Name="CalibrationPanel" Padding="12" Background="{ThemeResource AccentFillColorSecondaryBrush}" CornerRadius="6" Visibility="Collapsed">
+                            <StackPanel Spacing="10">
+                                <TextBlock FontSize="18" FontWeight="SemiBold" Text="3地点校正" />
+                                <TextBlock Text="互いに離れた、識別しやすい非共線の地点を選んでください。" TextWrapping="Wrap" />
+                                <TextBlock x:Name="CalibrationStepText" TextWrapping="Wrap" />
+                                <Button x:Name="ChooseCalibrationScreenshotButton" Click="OnChooseCalibrationScreenshotClick" Content="校正用スクリーンショットを選択" />
+                                <Button Click="OnCancelCalibrationClick" Content="校正をキャンセル" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <TextBlock Grid.Row="2" Padding="12,6" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="ホイール: ズーム / ドラッグ: パン / 全体表示ボタン: リセット" />
+    </Grid>
+</Window>
