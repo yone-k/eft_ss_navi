@@ -10,7 +10,7 @@ using Windows.Foundation;
 
 namespace EftSsMap.App.Controls;
 
-public sealed partial class MapCanvas : UserControl, IDisposable
+public sealed class MapCanvas : Grid, IDisposable
 {
     private const double ClickMovementTolerance = 4;
     private const double ZoomStep = 1.15;
@@ -20,6 +20,7 @@ public sealed partial class MapCanvas : UserControl, IDisposable
     private const float ArrowLength = 46;
     private const float ArrowHeadLength = 13;
 
+    private readonly SKXamlCanvas Surface;
     private LoadedMapImage? _mapImage;
     private ViewportTransform? _viewport;
     private PixelPoint? _markerPosition;
@@ -31,7 +32,19 @@ public sealed partial class MapCanvas : UserControl, IDisposable
 
     public MapCanvas()
     {
-        InitializeComponent();
+        Surface = new SKXamlCanvas
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+        };
+        Surface.PaintSurface += OnPaintSurface;
+        Surface.PointerCaptureLost += OnPointerCaptureLost;
+        Surface.PointerMoved += OnPointerMoved;
+        Surface.PointerPressed += OnPointerPressed;
+        Surface.PointerReleased += OnPointerReleased;
+        Surface.PointerWheelChanged += OnPointerWheelChanged;
+        Surface.SizeChanged += OnSurfaceSizeChanged;
+        Children.Add(Surface);
     }
 
     public event EventHandler<MapImagePixelClickedEventArgs>? ImagePixelClicked;
@@ -122,6 +135,12 @@ public sealed partial class MapCanvas : UserControl, IDisposable
 
         _disposed = true;
         Surface.PaintSurface -= OnPaintSurface;
+        Surface.PointerCaptureLost -= OnPointerCaptureLost;
+        Surface.PointerMoved -= OnPointerMoved;
+        Surface.PointerPressed -= OnPointerPressed;
+        Surface.PointerReleased -= OnPointerReleased;
+        Surface.PointerWheelChanged -= OnPointerWheelChanged;
+        Surface.SizeChanged -= OnSurfaceSizeChanged;
         _mapImage?.Dispose();
         _mapImage = null;
         _viewport = null;

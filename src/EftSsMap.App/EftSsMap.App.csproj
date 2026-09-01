@@ -25,4 +25,20 @@
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.4.0" />
     <PackageReference Include="SkiaSharp.Views.WinUI" Version="4.151.1" />
   </ItemGroup>
+
+  <Target Name="CopyApplicationXamlResourcesToPublishDirectory" AfterTargets="Publish">
+    <ItemGroup>
+      <_ApplicationXbf Include="$(TargetDir)**\*.xbf" />
+    </ItemGroup>
+    <Copy
+      SourceFiles="$(TargetDir)$(AssemblyName).pri"
+      DestinationFiles="$(PublishDir)$(AssemblyName).pri"
+      SkipUnchangedFiles="true"
+      Condition="Exists('$(TargetDir)$(AssemblyName).pri')" />
+    <Copy
+      SourceFiles="@(_ApplicationXbf)"
+      DestinationFiles="@(_ApplicationXbf->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true"
+      Condition="'@(_ApplicationXbf)' != ''" />
+  </Target>
 </Project>

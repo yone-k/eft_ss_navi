@@ -2,7 +2,6 @@
     x:Class="EftSsMap.App.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:controls="using:EftSsMap.App.Controls"
     Title="EFT Screenshot Map">
     <Grid x:Name="RootGrid" Loaded="OnRootLoaded">
         <Grid.RowDefinitions>
@@ -41,7 +40,7 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="320" />
             </Grid.ColumnDefinitions>
-            <controls:MapCanvas x:Name="MapControl" Grid.Column="0" ImagePixelClicked="OnMapImagePixelClicked" />
+            <Grid x:Name="MapHost" Grid.Column="0" />
             <Border Grid.Column="1" Padding="16" Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1,0,0,0">
                 <ScrollViewer>
                     <StackPanel Spacing="12">

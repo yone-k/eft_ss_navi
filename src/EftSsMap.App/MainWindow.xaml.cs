@@ -19,6 +19,7 @@ namespace EftSsMap.App;
 
 public sealed partial class MainWindow : Window
 {
+    private readonly MapCanvas MapControl;
     private readonly ObservableCollection<MapProfile> _profiles = [];
     private readonly IFilePickerService _pickerService = new FilePickerService();
     private readonly MainStateCoordinator _stateCoordinator = new();
@@ -37,6 +38,9 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        MapControl = new MapCanvas();
+        MapControl.ImagePixelClicked += OnMapImagePixelClicked;
+        MapHost.Children.Add(MapControl);
         _settingsPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "EftSsMap",
@@ -358,7 +362,7 @@ public sealed partial class MainWindow : Window
         CalibrationStepText.Text = $"地点 {_calibrationDraft.Points.Count + 1}/3: マップ上の同じ地点をクリックしてください。";
     }
 
-    private void OnMapImagePixelClicked(object sender, MapImagePixelClickedEventArgs e)
+    private void OnMapImagePixelClicked(object? sender, MapImagePixelClickedEventArgs e)
     {
         if (_calibrationDraft?.PendingWorldPoint is not { } worldPoint)
         {
@@ -588,6 +592,7 @@ public sealed partial class MainWindow : Window
         _screenshotMonitor.FileNameRejected -= OnFileNameRejected;
         _screenshotMonitor.MonitoringFailed -= OnMonitoringFailed;
         _screenshotMonitor.Dispose();
+        MapControl.ImagePixelClicked -= OnMapImagePixelClicked;
         MapControl.Dispose();
     }
 
