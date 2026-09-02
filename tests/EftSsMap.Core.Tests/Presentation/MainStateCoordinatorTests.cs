@@ -256,6 +256,30 @@ public sealed class MainStateCoordinatorTests
         AssertPoint(new PixelPoint(-10, 6), coordinator.State.MarkerDirection);
     }
 
+    [Fact]
+    public void ShouldReprojectDisplayedPositionWhenSelectedProfileIsCorrected()
+    {
+        // Given: A displayed position for the selected profile.
+        var coordinator = CreateCoordinatorWithSelectedProfile(CreateProfile("Woods"));
+        coordinator.ProcessObservation(
+            CreateObservation(new Vector3(4, 5, 6), null),
+            "correction.png");
+        var correctedProfile = CreateProfile(
+            "Woods",
+            new AffineTransform2D(2, 0, 0, 3, 10, 20));
+
+        // When: The selected profile is replaced with its corrected calibration.
+        var updated = coordinator.TryUpdateSelectedProfile(correctedProfile);
+
+        // Then: The same world position and file remain visible at the corrected pixel.
+        Assert.True(updated);
+        Assert.Same(correctedProfile, coordinator.SelectedProfile);
+        AssertPoint(new PixelPoint(18, 38), coordinator.State.MarkerPosition);
+        Assert.Equal(new Vector3(4, 5, 6), coordinator.State.WorldPosition);
+        Assert.Equal("correction.png", coordinator.State.FileName);
+        Assert.Equal(MainViewStatus.PositionAvailable, coordinator.State.Status);
+    }
+
     public static TheoryData<MainFailureKind, MainViewStatus> FailureStatuses => new()
     {
         { MainFailureKind.Parsing, MainViewStatus.ParseError },

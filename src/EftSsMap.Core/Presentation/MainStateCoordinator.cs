@@ -105,6 +105,33 @@ public sealed class MainStateCoordinator
             : MainViewStatus.WaitingForObservation);
     }
 
+    public bool TryUpdateSelectedProfile(MapProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        if (SelectedProfile is null
+            || !string.Equals(
+                SelectedProfile.DisplayName,
+                profile.DisplayName,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        Interlocked.Increment(ref epoch);
+        SelectedProfile = profile;
+        if (State.WorldPosition is { } position)
+        {
+            State = State with
+            {
+                MarkerPosition = profile.Transform.TransformPosition(
+                    new WorldPoint(position.X, position.Z)),
+                MarkerDirection = null,
+            };
+        }
+
+        return true;
+    }
+
     public void DeleteProfile(string displayName)
     {
         ArgumentNullException.ThrowIfNull(displayName);

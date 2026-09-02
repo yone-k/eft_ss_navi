@@ -30,6 +30,7 @@ public sealed partial class MainWindow : Window
     private readonly SettingsRepository _settingsRepository;
     private readonly string _settingsPath;
     private CalibrationDraft? _calibrationDraft;
+    private PositionCorrectionSession? _correctionSession;
     private string? _watchDirectory;
     private bool _initialized;
     private bool _suppressProfileSelection;
@@ -40,6 +41,8 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         MapControl = new MapCanvas();
         MapControl.ImagePixelClicked += OnMapImagePixelClicked;
+        MapControl.MarkerCorrectionRequested += OnMarkerCorrectionRequested;
+        MapControl.CalibrationAnchorSelected += OnCalibrationAnchorSelected;
         MapHost.Children.Add(MapControl);
         _settingsPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -205,6 +208,7 @@ public sealed partial class MainWindow : Window
 
     private async Task ActivateProfileAsync(MapProfile profile, bool persist)
     {
+        ResetCorrectionMode();
         var generation = _imageLoadTracker.Begin();
         if (_stateCoordinator.SelectedProfile is { } previousProfile)
         {
@@ -300,6 +304,7 @@ public sealed partial class MainWindow : Window
 
     private async Task BeginCalibrationAsync(string displayName, string imagePath, int? replaceIndex)
     {
+        ResetCorrectionMode();
         var generation = _imageLoadTracker.Begin();
         var loadResult = await SkiaMapImageLoader.LoadAsync(imagePath);
         if (!_imageLoadTracker.IsCurrent(generation))
@@ -481,6 +486,108 @@ public sealed partial class MainWindow : Window
 
     private void OnFitMapClick(object sender, RoutedEventArgs e) => MapControl.FitToView();
 
+    private void OnCorrectionModeClick(object sender, RoutedEventArgs e)
+    {
+        if (MapControl.IsMarkerCorrectionEnabled)
+        {
+            CancelCorrectionPreview("位置補正をキャンセルしました。");
+            return;
+        }
+
+        if (_stateCoordinator.SelectedProfile is not { } profile
+            || _stateCoordinator.State.WorldPosition is not { } position
+            || _stateCoordinator.State.MarkerPosition is null)
+        {
+            SetStatus("補正する現在位置が表示されていません。");
+            return;
+        }
+
+        if (!PositionCorrectionSession.TryCreate(
+            profile,
+            new WorldPoint(position.X, position.Z),
+            out var session))
+        {
+            SetStatus("置き換える校正点を選べませんでした。再校正してください。");
+            return;
+        }
+
+        _correctionSession = session;
+        MapControl.ShowCalibrationAnchors(profile.CalibrationPoints, session.ReplacementIndex);
+        SetCorrectionMode(true);
+        SetStatus(
+            $"黄色の校正点 {session.ReplacementIndex + 1} が置き換わります。赤い現在位置マーカーを正しい位置へドラッグしてください。");
+    }
+
+    private void OnMarkerCorrectionRequested(
+        object? sender,
+        MarkerCorrectionRequestedEventArgs e)
+    {
+        var session = _correctionSession;
+        if (session is null)
+        {
+            ResetCorrectionMode();
+            ApplyStateToView("位置補正を開始し直してください。");
+            return;
+        }
+
+        if (!session.TryPreview(e.ImagePixel) || session.PendingProfile is not { } previewProfile)
+        {
+            ApplyStateToView("補正点から有効な校正を計算できませんでした。");
+            return;
+        }
+
+        MapControl.ShowCalibrationAnchors(
+            previewProfile.CalibrationPoints,
+            session.ReplacementIndex);
+        ConfirmCorrectionButton.Visibility = Visibility.Visible;
+        ConfirmCorrectionButton.IsEnabled = true;
+        SetStatus("補正位置をプレビューしています。「補正を確定」で保存するか、「補正をキャンセル」で元に戻せます。");
+    }
+
+    private void OnConfirmCorrectionClick(object sender, RoutedEventArgs e)
+    {
+        var session = _correctionSession;
+        if (session is null || !session.TryConfirm(out var correctedProfile))
+        {
+            SetStatus("確定する補正位置がありません。");
+            return;
+        }
+
+        var profileIndex = _profiles.IndexOf(session.OriginalProfile);
+        if (profileIndex < 0 || !_stateCoordinator.TryUpdateSelectedProfile(correctedProfile))
+        {
+            CancelCorrectionPreview("選択中のプロファイルが変わったため補正を適用できませんでした。");
+            return;
+        }
+
+        _profiles[profileIndex] = correctedProfile;
+        _correctionSession = null;
+        SetCorrectionMode(false);
+        ApplyStateToView(
+            $"位置補正を保存しました。校正点 {session.ReplacementIndex + 1} を置き換えました。");
+        PersistSettings();
+    }
+
+    private void OnCalibrationAnchorSelected(
+        object? sender,
+        CalibrationAnchorSelectedEventArgs e)
+    {
+        var session = _correctionSession;
+        if (session is null || !session.TrySelectReplacement(e.AnchorIndex))
+        {
+            SetStatus("校正点を選択できませんでした。");
+            return;
+        }
+
+        ConfirmCorrectionButton.Visibility = Visibility.Collapsed;
+        ConfirmCorrectionButton.IsEnabled = false;
+        ApplyStateToView(
+            $"校正点 {session.ReplacementIndex + 1} を置換します。赤い現在位置マーカーを正しい位置へドラッグしてください。");
+        MapControl.ShowCalibrationAnchors(
+            session.OriginalProfile.CalibrationPoints,
+            session.ReplacementIndex);
+    }
+
     private async Task<string?> PromptForProfileNameAsync()
     {
         var input = new TextBox { PlaceholderText = "例: Woods" };
@@ -558,6 +665,36 @@ public sealed partial class MainWindow : Window
             : "X, Y, Z: —";
         FileNameText.Text = state.FileName ?? "—";
         StatusText.Text = messageOverride ?? StatusMessage(state.Status);
+        CorrectionModeButton.IsEnabled =
+            _calibrationDraft is null
+            && _stateCoordinator.SelectedProfile is not null
+            && state.WorldPosition is not null
+            && state.MarkerPosition is not null;
+    }
+
+    private void SetCorrectionMode(bool enabled)
+    {
+        MapControl.IsMarkerCorrectionEnabled = enabled;
+        CorrectionModeButton.Content = enabled ? "補正をキャンセル" : "位置を補正";
+        if (!enabled)
+        {
+            MapControl.HideCalibrationAnchors();
+            ConfirmCorrectionButton.Visibility = Visibility.Collapsed;
+            ConfirmCorrectionButton.IsEnabled = false;
+        }
+    }
+
+    private void CancelCorrectionPreview(string message)
+    {
+        ResetCorrectionMode();
+        ApplyStateToView(message);
+    }
+
+    private void ResetCorrectionMode()
+    {
+        _correctionSession?.Cancel();
+        _correctionSession = null;
+        SetCorrectionMode(false);
     }
 
     private void SetStatus(string message) => StatusText.Text = message;
@@ -593,6 +730,8 @@ public sealed partial class MainWindow : Window
         _screenshotMonitor.MonitoringFailed -= OnMonitoringFailed;
         _screenshotMonitor.Dispose();
         MapControl.ImagePixelClicked -= OnMapImagePixelClicked;
+        MapControl.MarkerCorrectionRequested -= OnMarkerCorrectionRequested;
+        MapControl.CalibrationAnchorSelected -= OnCalibrationAnchorSelected;
         MapControl.Dispose();
     }
 

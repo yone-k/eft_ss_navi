@@ -22,6 +22,8 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBlock VerticalAlignment="Center" Text="監視先" />
                 <TextBox x:Name="WatchDirectoryText" Grid.Column="1" IsReadOnly="True" PlaceholderText="スクリーンショット監視先を選択してください" />
@@ -31,7 +33,9 @@
                 <Button Grid.Column="5" Click="OnNewProfileClick" Content="新規" />
                 <Button Grid.Column="6" Click="OnRecalibrateClick" Content="再校正" />
                 <Button Grid.Column="7" Click="OnDeleteProfileClick" Content="削除" />
-                <Button Grid.Column="8" Click="OnFitMapClick" Content="全体表示" />
+                <Button x:Name="CorrectionModeButton" Grid.Column="8" Click="OnCorrectionModeClick" Content="位置を補正" IsEnabled="False" />
+                <Button x:Name="ConfirmCorrectionButton" Grid.Column="9" Click="OnConfirmCorrectionClick" Content="補正を確定" Visibility="Collapsed" />
+                <Button Grid.Column="10" Click="OnFitMapClick" Content="全体表示" />
             </Grid>
         </Border>
 
