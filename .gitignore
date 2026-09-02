@@ -1,0 +1,13 @@
+.vs/
+.idea/
+.codex/
+.agent_tmp/
+**/bin/
+**/obj/
+artifacts/
+publish/
+*.zip
+
+# Local-only EFT assets. Bundled, licensed assets live under src/EftSsMap.App/Assets.
+samples/
+/maps/

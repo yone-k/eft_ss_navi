@@ -1,0 +1,6 @@
+namespace EftSsMap.Core.Monitoring;
+
+public interface IScreenshotCreatedSourceFactory
+{
+    IScreenshotCreatedSource Create(string directoryPath);
+}

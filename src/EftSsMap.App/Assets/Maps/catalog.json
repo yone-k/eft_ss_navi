@@ -1,0 +1,117 @@
+{
+  "version": 3,
+  "source": "https://github.com/the-hideout/tarkov-dev/blob/560a844649b92aba1cdd463271e21e772e4e8df9/src/data/maps.json",
+  "replaceableImageFileNames": [
+    "customs-monki-glory4lyfe.png",
+    "factory-re3mr.jpg",
+    "ground-zero-xtycho.png",
+    "interchange-tarkov-dev.png",
+    "lighthouse-jindouz.png",
+    "reserve-jindouz.png",
+    "shoreline-monki-jindouz.png",
+    "streets-jindouz.png",
+    "streets-of-tarkov-tarkov-dev.png",
+    "woods-jindouz.png"
+  ],
+  "maps": [
+    {
+      "displayName": "Woods",
+      "mapKey": "woods",
+      "fileName": "woods-tarkov-dev.png",
+      "width": 4096,
+      "height": 3948,
+      "sha256": "48a1ce91e8fac1be1271ea8be405eee30174dbba859377de612fd6707fbc783b",
+      "transform": [0.1855, 112.95, 0.1855, 167.85],
+      "coordinateRotation": 180,
+      "bounds": [[646, -914], [-761, 442]]
+    },
+    {
+      "displayName": "Street of Tarkov",
+      "mapKey": "streets-of-tarkov",
+      "fileName": "streets-of-tarkov-tarkov-dev.png",
+      "width": 2987,
+      "height": 4096,
+      "sha256": "a02f3b7ab3ad3ba8649623db5afe8f46619d20c6344646ff71db76608b1c882b",
+      "transform": [0.38, 0, 0.38, 0],
+      "coordinateRotation": 180,
+      "bounds": [[323, -295], [-280, 532]]
+    },
+    {
+      "displayName": "Customs",
+      "mapKey": "customs",
+      "fileName": "customs-tarkov-dev.png",
+      "width": 4096,
+      "height": 2082,
+      "sha256": "58a4e4a578af6940ba6d426a86c36ca4b7cb5eecbcfb398a7dafc104beeb0070",
+      "transform": [0.239, 168.65, 0.239, 136.35],
+      "coordinateRotation": 180,
+      "bounds": [[698, -307], [-372, 237]]
+    },
+    {
+      "displayName": "Factory",
+      "mapKey": "factory",
+      "fileName": "factory-tarkov-dev.png",
+      "width": 3791,
+      "height": 4096,
+      "sha256": "91d18e9d8ae3f97760a0e2dc8c0f0681e8d5409adc404d9875d7557c8d6544d8",
+      "transform": [1.629, 119.9, 1.629, 139.3],
+      "coordinateRotation": 90,
+      "bounds": [[77, -64.5], [-65.5, 67.4]]
+    },
+    {
+      "displayName": "Ground Zero",
+      "mapKey": "ground-zero",
+      "fileName": "ground-zero-tarkov-dev.png",
+      "width": 2921,
+      "height": 4096,
+      "sha256": "84a6297acd3697a1b3926ca36c4dfb395eb7577ea91b5753fcac3808681e7219",
+      "transform": [0.524, 167.3, 0.524, 65.1],
+      "coordinateRotation": 180,
+      "bounds": [[249, -124], [-99, 364]]
+    },
+    {
+      "displayName": "Interchange",
+      "mapKey": "interchange",
+      "fileName": "interchange-ground-tarkov-dev.png",
+      "width": 4096,
+      "height": 3449,
+      "sha256": "863d02f496eca47c0d3f508ab528db34614d920813e3fb4f7a13471ad0b4f31b",
+      "transform": [0.265, 150.6, 0.265, 134.6],
+      "coordinateRotation": 180,
+      "bounds": [[598, -442], [-433, 426]]
+    },
+    {
+      "displayName": "Lighthouse",
+      "mapKey": "lighthouse",
+      "fileName": "lighthouse-tarkov-dev.png",
+      "width": 2519,
+      "height": 4096,
+      "sha256": "122ff63e615984228d70f5734724da25e94312ee524729fb040a7bb9f30e5e1c",
+      "transform": [0.2, 0, 0.2, 0],
+      "coordinateRotation": 180,
+      "bounds": [[515, -998], [-545, 725]]
+    },
+    {
+      "displayName": "Reserve",
+      "mapKey": "reserve",
+      "fileName": "reserve-tarkov-dev.png",
+      "width": 4096,
+      "height": 3778,
+      "sha256": "42c1a3f898b6ec52746421e022a4d30f7729d682e9ce7aae6a7616e329ebd746",
+      "transform": [0.395, 122, 0.395, 137.65],
+      "coordinateRotation": 180,
+      "bounds": [[289, -274], [-303, 272]]
+    },
+    {
+      "displayName": "Shoreline",
+      "mapKey": "shoreline",
+      "fileName": "shoreline-tarkov-dev.png",
+      "width": 4096,
+      "height": 2712,
+      "sha256": "4dc14f5e90c2f0e9ba629b9466b004e2eb731b259d82c7175963b6a3036500cc",
+      "transform": [0.16, 83.2, 0.16, 111.1],
+      "coordinateRotation": 180,
+      "bounds": [[504, -415], [-1056, 618]]
+    }
+  ]
+}
