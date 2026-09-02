@@ -243,12 +243,15 @@ public sealed partial class MainWindow : Window
     {
         _selectedProfile = profile;
         ProfileMenuButton.Content = profile?.DisplayName ?? "マップを選択";
+        RotateMapLeftButton.IsEnabled = profile is not null;
+        RotateMapRightButton.IsEnabled = profile is not null;
     }
 
     private async Task ActivateProfileAsync(MapProfile profile, bool persist)
     {
         ResetCorrectionMode();
         ResetProgressiveCalibration();
+        MapControl.SetImageRotation(profile.ImageRotationQuarterTurns);
         var generation = _imageLoadTracker.Begin();
         if (_stateCoordinator.SelectedProfile is { } previousProfile)
         {
@@ -360,9 +363,10 @@ public sealed partial class MainWindow : Window
             _stateCoordinator.DeleteProfile(previousProfile.DisplayName);
         }
 
+        var profile = MapProfile.CreateUncalibrated(displayName, loadResult.Image.Fingerprint);
+        MapControl.SetImageRotation(profile.ImageRotationQuarterTurns);
         MapControl.SetImage(loadResult.Image);
         MapControl.SetMarker(null, null);
-        var profile = MapProfile.CreateUncalibrated(displayName, loadResult.Image.Fingerprint);
         _profiles.Add(profile);
         SetSelectedProfile(profile);
         _progressiveCalibrationSession = new ProgressiveCalibrationSession(profile);
@@ -443,6 +447,53 @@ public sealed partial class MainWindow : Window
         MapControl.SetImage(null);
         ApplyStateToView("プロファイルを削除しました。現在のマップを選択してください。");
         PersistSettings();
+    }
+
+    private void OnRotateMapLeftClick(object sender, RoutedEventArgs e) => RotateSelectedMap(-1);
+
+    private void OnRotateMapRightClick(object sender, RoutedEventArgs e) => RotateSelectedMap(1);
+
+    private void RotateSelectedMap(int quarterTurnDelta)
+    {
+        if (_selectedProfile is not { } selected)
+        {
+            SetStatus("回転するマップを選択してください。");
+            return;
+        }
+
+        var profileIndex = _profiles.IndexOf(selected);
+        if (profileIndex < 0)
+        {
+            SetStatus("選択中のマップ設定を更新できませんでした。");
+            return;
+        }
+
+        ResetCorrectionMode();
+        var requestedQuarterTurns = selected.ImageRotationQuarterTurns + quarterTurnDelta;
+        MapProfile rotatedProfile;
+        if (_progressiveCalibrationSession is { } calibrationSession)
+        {
+            calibrationSession.SetImageRotationQuarterTurns(requestedQuarterTurns);
+            rotatedProfile = calibrationSession.Profile;
+        }
+        else
+        {
+            rotatedProfile = selected.WithImageRotationQuarterTurns(requestedQuarterTurns);
+        }
+
+        if (!_stateCoordinator.TryUpdateSelectedProfileDisplaySettings(rotatedProfile))
+        {
+            SetStatus("選択中のマップ設定を更新できませんでした。");
+            return;
+        }
+
+        _profiles[profileIndex] = rotatedProfile;
+        SetSelectedProfile(rotatedProfile);
+        MapControl.SetImageRotation(rotatedProfile.ImageRotationQuarterTurns);
+        PersistSettings();
+        SetStatus(quarterTurnDelta < 0
+            ? "マップを左へ90度回転しました。"
+            : "マップを右へ90度回転しました。");
     }
 
     private void OnFitMapClick(object sender, RoutedEventArgs e) => MapControl.FitToView();

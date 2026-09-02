@@ -62,6 +62,38 @@ public sealed class MapProfileTests
         Assert.Equal(imageSha256, profile.ImageSha256);
         Assert.Equal(calibrationPoints, profile.CalibrationPoints);
         Assert.Equal(coefficients, profile.Transform);
+        Assert.Equal(0, profile.ImageRotationQuarterTurns);
+    }
+
+    [Fact]
+    public void ShouldRotateProfileWithoutChangingCalibrationMetadata()
+    {
+        // Given: A calibrated profile with its original display orientation.
+        var original = new MapProfile(
+            "Woods",
+            @"C:\maps\woods.png",
+            100,
+            60,
+            "hash",
+            [
+                new CalibrationPoint(new WorldPoint(0, 0), new PixelPoint(0, 0)),
+                new CalibrationPoint(new WorldPoint(1, 0), new PixelPoint(10, 0)),
+                new CalibrationPoint(new WorldPoint(0, 1), new PixelPoint(0, 10)),
+            ],
+            new AffineTransform2D(10, 0, 0, 10, 0, 0));
+
+        // When: Its image is rotated one quarter turn clockwise.
+        var rotated = original.WithImageRotationQuarterTurns(1);
+
+        // Then: Only the profile display setting changes.
+        Assert.Equal(1, rotated.ImageRotationQuarterTurns);
+        Assert.Equal(original.DisplayName, rotated.DisplayName);
+        Assert.Equal(original.ImagePath, rotated.ImagePath);
+        Assert.Equal(original.CalibratedImageWidth, rotated.CalibratedImageWidth);
+        Assert.Equal(original.CalibratedImageHeight, rotated.CalibratedImageHeight);
+        Assert.Equal(original.ImageSha256, rotated.ImageSha256);
+        Assert.Equal(original.CalibrationPoints, rotated.CalibrationPoints);
+        Assert.Equal(original.Transform, rotated.Transform);
     }
 
 }

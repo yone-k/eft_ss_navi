@@ -87,7 +87,8 @@ public static class MapProfileCorrection
             profile.CalibratedImageHeight,
             profile.ImageSha256,
             points,
-            transform);
+            transform,
+            profile.ImageRotationQuarterTurns);
         return true;
     }
 

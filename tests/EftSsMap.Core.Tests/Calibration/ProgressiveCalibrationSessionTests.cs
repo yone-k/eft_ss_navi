@@ -94,11 +94,41 @@ public sealed class ProgressiveCalibrationSessionTests
         Assert.Single(session.Profile.CalibrationPoints);
     }
 
-    private static ProgressiveCalibrationSession CreateSession()
+    [Fact]
+    public void ShouldPreserveImageRotationWhileCalibrationPointsAreAdded()
+    {
+        // Given: An uncalibrated profile displayed at 90 degrees clockwise.
+        var session = CreateSession(imageRotationQuarterTurns: 1);
+
+        // When: A detected location is placed on the map.
+        AddAnchor(session, new WorldPoint(10, 20), new PixelPoint(100, 200));
+
+        // Then: Saving partial calibration does not reset its display orientation.
+        Assert.Equal(1, session.Profile.ImageRotationQuarterTurns);
+    }
+
+    [Fact]
+    public void ShouldPreservePendingDetectedPositionWhenMapIsRotated()
+    {
+        // Given: A detected position is waiting for the user to click the map.
+        var session = CreateSession();
+        var pending = new WorldPoint(10, 20);
+        Assert.True(session.TryStage(pending));
+
+        // When: The profile display is rotated before the click.
+        session.SetImageRotationQuarterTurns(3);
+
+        // Then: Rotation is stored without discarding the pending calibration position.
+        Assert.Equal(3, session.Profile.ImageRotationQuarterTurns);
+        Assert.Equal(pending, session.PendingWorldPoint);
+    }
+
+    private static ProgressiveCalibrationSession CreateSession(int imageRotationQuarterTurns = 0)
     {
         var profile = MapProfile.CreateUncalibrated(
             "Interchange",
-            new ImageFingerprint(@"C:\Maps\interchange.png", 4096, 3440, "hash"));
+            new ImageFingerprint(@"C:\Maps\interchange.png", 4096, 3440, "hash"))
+            .WithImageRotationQuarterTurns(imageRotationQuarterTurns);
         return new ProgressiveCalibrationSession(profile);
     }
 

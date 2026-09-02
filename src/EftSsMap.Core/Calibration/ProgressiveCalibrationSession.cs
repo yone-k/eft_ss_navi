@@ -20,6 +20,9 @@ public sealed class ProgressiveCalibrationSession
 
     public WorldPoint? PendingWorldPoint { get; private set; }
 
+    public void SetImageRotationQuarterTurns(int imageRotationQuarterTurns) =>
+        Profile = Profile.WithImageRotationQuarterTurns(imageRotationQuarterTurns);
+
     public bool TryStage(WorldPoint worldPoint)
     {
         if (!worldPoint.IsFinite || PendingWorldPoint is not null || Profile.CalibrationPoints.Count >= 3)
@@ -73,5 +76,6 @@ public sealed class ProgressiveCalibrationSession
             Profile.CalibratedImageHeight,
             Profile.ImageSha256,
             calibrationPoints,
-            transform);
+            transform,
+            Profile.ImageRotationQuarterTurns);
 }

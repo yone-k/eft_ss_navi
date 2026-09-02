@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using EftSsMap.Core.Images;
+using EftSsMap.Core.Viewport;
 
 namespace EftSsMap.Core.Calibration;
 
@@ -28,7 +29,8 @@ public sealed class MapProfile
         int calibratedImageHeight,
         string imageSha256,
         IReadOnlyList<CalibrationPoint> calibrationPoints,
-        AffineTransform2D transform)
+        AffineTransform2D transform,
+        int imageRotationQuarterTurns = 0)
     {
         ArgumentNullException.ThrowIfNull(displayName);
         ArgumentNullException.ThrowIfNull(imagePath);
@@ -42,7 +44,19 @@ public sealed class MapProfile
         ImageSha256 = imageSha256;
         CalibrationPoints = new ReadOnlyCollection<CalibrationPoint>(calibrationPoints.ToArray());
         Transform = transform;
+        ImageRotationQuarterTurns = new MapImageRotation(imageRotationQuarterTurns).QuarterTurns;
     }
+
+    public MapProfile WithImageRotationQuarterTurns(int imageRotationQuarterTurns) =>
+        new(
+            DisplayName,
+            ImagePath,
+            CalibratedImageWidth,
+            CalibratedImageHeight,
+            ImageSha256,
+            CalibrationPoints,
+            Transform,
+            imageRotationQuarterTurns);
 
     public string DisplayName { get; }
 
@@ -57,4 +71,6 @@ public sealed class MapProfile
     public IReadOnlyList<CalibrationPoint> CalibrationPoints { get; }
 
     public AffineTransform2D Transform { get; }
+
+    public int ImageRotationQuarterTurns { get; }
 }

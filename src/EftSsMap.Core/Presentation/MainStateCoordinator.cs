@@ -132,6 +132,22 @@ public sealed class MainStateCoordinator
         return true;
     }
 
+    public bool TryUpdateSelectedProfileDisplaySettings(MapProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        if (SelectedProfile is null
+            || !string.Equals(
+                SelectedProfile.DisplayName,
+                profile.DisplayName,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        SelectedProfile = profile;
+        return true;
+    }
+
     public void DeleteProfile(string displayName)
     {
         ArgumentNullException.ThrowIfNull(displayName);

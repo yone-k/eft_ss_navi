@@ -280,6 +280,28 @@ public sealed class MainStateCoordinatorTests
         Assert.Equal(MainViewStatus.PositionAvailable, coordinator.State.Status);
     }
 
+    [Fact]
+    public void ShouldPreserveDisplayedObservationWhenOnlyProfileRotationChanges()
+    {
+        // Given: A displayed position and direction for the selected profile.
+        var coordinator = CreateCoordinatorWithSelectedProfile(CreateProfile("Woods"));
+        coordinator.ProcessObservation(
+            CreateObservation(new Vector3(4, 5, 6), new Vector2(2, 5)),
+            "rotation.png");
+        var stateBeforeRotation = coordinator.State;
+        var epochBeforeRotation = coordinator.Epoch;
+        var rotatedProfile = coordinator.SelectedProfile!.WithImageRotationQuarterTurns(1);
+
+        // When: Only the profile's display rotation is updated.
+        var updated = coordinator.TryUpdateSelectedProfileDisplaySettings(rotatedProfile);
+
+        // Then: The same observation stays visible and pending screenshot callbacks remain valid.
+        Assert.True(updated);
+        Assert.Same(rotatedProfile, coordinator.SelectedProfile);
+        Assert.Same(stateBeforeRotation, coordinator.State);
+        Assert.Equal(epochBeforeRotation, coordinator.Epoch);
+    }
+
     public static TheoryData<MainFailureKind, MainViewStatus> FailureStatuses => new()
     {
         { MainFailureKind.Parsing, MainViewStatus.ParseError },

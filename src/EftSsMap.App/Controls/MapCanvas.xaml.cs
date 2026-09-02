@@ -21,6 +21,7 @@ public sealed class MapCanvas : Grid, IDisposable
     private readonly CalibrationAnchorOverlay _calibrationAnchorOverlay = new();
     private readonly MarkerDragInteraction _markerDragInteraction = new();
     private LoadedMapImage? _mapImage;
+    private MapImageRotation _imageRotation = new(0);
     private ViewportTransform? _viewport;
     private PixelPoint? _markerPosition;
     private PixelPoint? _markerDirection;
@@ -93,6 +94,19 @@ public sealed class MapCanvas : Grid, IDisposable
         previous?.Dispose();
     }
 
+    public void SetImageRotation(int quarterTurns)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var rotation = new MapImageRotation(quarterTurns);
+        if (rotation == _imageRotation)
+        {
+            return;
+        }
+
+        _imageRotation = rotation;
+        FitToView();
+    }
+
     public void SetMarker(PixelPoint? position, PixelPoint? direction)
     {
         _markerPosition = position;
@@ -124,7 +138,7 @@ public sealed class MapCanvas : Grid, IDisposable
         }
 
         _viewport = ViewportTransform.Fit(
-            new Size2D(_mapImage.Fingerprint.Width, _mapImage.Fingerprint.Height),
+            _imageRotation.GetDisplaySize(GetImageSize()),
             new Size2D(Surface.ActualWidth, Surface.ActualHeight));
         Surface.Invalidate();
     }
@@ -137,17 +151,21 @@ public sealed class MapCanvas : Grid, IDisposable
             return false;
         }
 
-        var converted = _viewport.ViewToImage(new PixelPoint(viewPoint.X, viewPoint.Y));
-        if (converted.X < 0
-            || converted.Y < 0
-            || converted.X >= _mapImage.Fingerprint.Width
-            || converted.Y >= _mapImage.Fingerprint.Height)
+        var displayPoint = _viewport.ViewToImage(new PixelPoint(viewPoint.X, viewPoint.Y));
+        var displaySize = _imageRotation.GetDisplaySize(GetImageSize());
+        if (displayPoint.X < 0
+            || displayPoint.Y < 0
+            || displayPoint.X >= displaySize.Width
+            || displayPoint.Y >= displaySize.Height)
         {
             return false;
         }
 
-        imagePixel = converted;
-        return true;
+        imagePixel = _imageRotation.DisplayToImage(displayPoint, GetImageSize());
+        return imagePixel.X >= 0
+            && imagePixel.Y >= 0
+            && imagePixel.X < _mapImage.Fingerprint.Width
+            && imagePixel.Y < _mapImage.Fingerprint.Height;
     }
 
     public void Dispose()
@@ -189,19 +207,7 @@ public sealed class MapCanvas : Grid, IDisposable
             args.Info.Width / (float)Surface.ActualWidth,
             args.Info.Height / (float)Surface.ActualHeight);
 
-        var topLeft = _viewport.ImageToView(default);
-        var bottomRight = _viewport.ImageToView(new PixelPoint(
-            _mapImage.Fingerprint.Width,
-            _mapImage.Fingerprint.Height));
-        var destination = new SKRect(
-            (float)topLeft.X,
-            (float)topLeft.Y,
-            (float)bottomRight.X,
-            (float)bottomRight.Y);
-        canvas.DrawImage(
-            _mapImage.Image,
-            destination,
-            new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.None));
+        DrawMapImage(canvas);
 
         DrawCalibrationAnchors(canvas);
         DrawMarker(canvas);
@@ -210,16 +216,19 @@ public sealed class MapCanvas : Grid, IDisposable
 
     private void DrawMarker(SKCanvas canvas)
     {
-        if (_viewport is null || _markerPosition is not { } position)
+        if (_mapImage is null || _viewport is null || _markerPosition is not { } position)
         {
             return;
         }
 
-        var viewPosition = _viewport.ImageToView(position);
+        var viewPosition = ImageToView(position);
         var center = new SKPoint((float)viewPosition.X, (float)viewPosition.Y);
+        PixelPoint? displayDirection = _markerDirection is { } direction
+            ? _imageRotation.DirectionToDisplay(direction)
+            : null;
         var cursor = NavigationCursorGeometry.Create(
             new PixelPoint(center.X, center.Y),
-            _markerDirection);
+            displayDirection);
 
         using var pathBuilder = new SKPathBuilder();
         pathBuilder.MoveTo(ToSkPoint(cursor.Tip));
@@ -252,14 +261,14 @@ public sealed class MapCanvas : Grid, IDisposable
 
     private void DrawCalibrationAnchors(SKCanvas canvas)
     {
-        if (_viewport is null)
+        if (_mapImage is null || _viewport is null)
         {
             return;
         }
 
         foreach (var anchor in _calibrationAnchorOverlay.Anchors)
         {
-            var viewPosition = _viewport.ImageToView(anchor.Position);
+            var viewPosition = ImageToView(anchor.Position);
             var center = new SKPoint((float)viewPosition.X, (float)viewPosition.Y);
             var color = anchor.WillBeReplaced
                 ? new SKColor(255, 184, 48)
@@ -312,7 +321,7 @@ public sealed class MapCanvas : Grid, IDisposable
         var point = e.GetCurrentPoint(Surface);
         var factor = point.Properties.MouseWheelDelta > 0 ? ZoomStep : 1 / ZoomStep;
         var fit = ViewportTransform.Fit(
-            new Size2D(_mapImage.Fingerprint.Width, _mapImage.Fingerprint.Height),
+            _imageRotation.GetDisplaySize(GetImageSize()),
             new Size2D(Surface.ActualWidth, Surface.ActualHeight));
         _viewport = _viewport.ZoomAt(
             new PixelPoint(point.Position.X, point.Position.Y),
@@ -348,7 +357,7 @@ public sealed class MapCanvas : Grid, IDisposable
 
         if (_viewport is not null && _markerPosition is { } markerPosition)
         {
-            var markerView = _viewport.ImageToView(markerPosition);
+            var markerView = ImageToView(markerPosition);
             if (_markerDragInteraction.TryBegin(
                 new PixelPoint(point.Position.X, point.Position.Y),
                 markerView))
@@ -479,9 +488,10 @@ public sealed class MapCanvas : Grid, IDisposable
     {
         anchorIndex = -1;
         return _viewport is not null
+            && _mapImage is not null
             && _calibrationAnchorOverlay.TryHitTest(
                 new PixelPoint(viewPoint.X, viewPoint.Y),
-                _viewport.ImageToView,
+                ImageToView,
                 out anchorIndex);
     }
 
@@ -495,5 +505,61 @@ public sealed class MapCanvas : Grid, IDisposable
         {
             Surface.Invalidate();
         }
+    }
+
+    private void DrawMapImage(SKCanvas canvas)
+    {
+        if (_mapImage is null || _viewport is null)
+        {
+            return;
+        }
+
+        var imageSize = GetImageSize();
+        var topLeft = _viewport.ImageToView(default);
+        canvas.Save();
+        canvas.Translate((float)topLeft.X, (float)topLeft.Y);
+        canvas.Scale((float)_viewport.Scale);
+        switch (_imageRotation.QuarterTurns)
+        {
+            case 1:
+                canvas.Translate((float)imageSize.Height, 0);
+                canvas.RotateDegrees(90);
+                break;
+            case 2:
+                canvas.Translate((float)imageSize.Width, (float)imageSize.Height);
+                canvas.RotateDegrees(180);
+                break;
+            case 3:
+                canvas.Translate(0, (float)imageSize.Width);
+                canvas.RotateDegrees(270);
+                break;
+        }
+
+        canvas.DrawImage(
+            _mapImage.Image,
+            new SKRect(0, 0, (float)imageSize.Width, (float)imageSize.Height),
+            new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.None));
+        canvas.Restore();
+    }
+
+    private Size2D GetImageSize()
+    {
+        if (_mapImage is null)
+        {
+            throw new InvalidOperationException("A map image is required.");
+        }
+
+        return new Size2D(_mapImage.Fingerprint.Width, _mapImage.Fingerprint.Height);
+    }
+
+    private PixelPoint ImageToView(PixelPoint imagePoint)
+    {
+        if (_viewport is null)
+        {
+            throw new InvalidOperationException("A viewport is required.");
+        }
+
+        return _viewport.ImageToView(
+            _imageRotation.ImageToDisplay(imagePoint, GetImageSize()));
     }
 }

@@ -55,6 +55,27 @@ public sealed class SettingsRepositoryTests
     }
 
     [Fact]
+    public void ShouldRestoreZeroRotationFromSettingsWrittenBeforeRotationWasAdded()
+    {
+        // Given: A profile JSON document without the later image-rotation property.
+        var currentJson = JsonSerializer.Serialize(new AppSettings(
+            @"C:\EFT\Screenshots",
+            [CreateProfile("Woods", imageRotationQuarterTurns: 3)],
+            "Woods"));
+        using var document = JsonDocument.Parse(currentJson);
+        var legacyJson = currentJson.Replace(
+            $",\"ImageRotationQuarterTurns\":{document.RootElement.GetProperty("MapProfiles")[0].GetProperty("ImageRotationQuarterTurns").GetInt32()}",
+            string.Empty,
+            StringComparison.Ordinal);
+
+        // When: The old document is loaded by the new profile contract.
+        var restored = JsonSerializer.Deserialize<AppSettings>(legacyJson);
+
+        // Then: Existing users keep the original zero-degree orientation.
+        Assert.Equal(0, Assert.Single(Assert.IsType<AppSettings>(restored).MapProfiles).ImageRotationQuarterTurns);
+    }
+
+    [Fact]
     public void ShouldWriteTemporaryFileInDestinationDirectoryWhenSaving()
     {
         // Given: A repository whose destination directory is known.
@@ -339,7 +360,7 @@ public sealed class SettingsRepositoryTests
     private static AppSettings CreateSettings() =>
         new(@"C:\EFT\Screenshots", [CreateProfile("Woods")], "Woods");
 
-    private static MapProfile CreateProfile(string name)
+    private static MapProfile CreateProfile(string name, int imageRotationQuarterTurns = 0)
     {
         CalibrationPoint[] points =
         [
@@ -355,7 +376,8 @@ public sealed class SettingsRepositoryTests
             6800,
             new string('a', 64),
             points,
-            new AffineTransform2D(10, 0, 0, 10, 0, 0));
+            new AffineTransform2D(10, 0, 0, 10, 0, 0),
+            imageRotationQuarterTurns);
     }
 
     private static void AssertProfileEquivalent(MapProfile expected, MapProfile actual)
@@ -367,6 +389,7 @@ public sealed class SettingsRepositoryTests
         Assert.Equal(expected.ImageSha256, actual.ImageSha256);
         Assert.Equal(expected.CalibrationPoints, actual.CalibrationPoints);
         Assert.Equal(expected.Transform, actual.Transform);
+        Assert.Equal(expected.ImageRotationQuarterTurns, actual.ImageRotationQuarterTurns);
     }
 
     private sealed class FakeSettingsFileSystem : ISettingsFileSystem

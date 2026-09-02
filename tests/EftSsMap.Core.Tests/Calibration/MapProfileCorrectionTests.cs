@@ -130,7 +130,25 @@ public sealed class MapProfileCorrectionTests
         Assert.Same(profile, correctedProfile);
     }
 
-    private static MapProfile CreateProfile() => new(
+    [Fact]
+    public void ShouldPreserveImageRotationWhenCalibrationPointIsCorrected()
+    {
+        // Given: A rotated map profile.
+        var profile = CreateProfile(imageRotationQuarterTurns: 3);
+
+        // When: One of its calibration points is corrected.
+        var applied = MapProfileCorrection.TryApply(
+            profile,
+            new WorldPoint(1, 1),
+            new PixelPoint(120, 80),
+            out var correctedProfile);
+
+        // Then: The per-profile display rotation remains unchanged.
+        Assert.True(applied);
+        Assert.Equal(3, correctedProfile.ImageRotationQuarterTurns);
+    }
+
+    private static MapProfile CreateProfile(int imageRotationQuarterTurns = 0) => new(
         "Woods",
         @"C:\Maps\woods.png",
         7000,
@@ -141,7 +159,8 @@ public sealed class MapProfileCorrectionTests
             new CalibrationPoint(new WorldPoint(10, 0), new PixelPoint(1000, 0)),
             new CalibrationPoint(new WorldPoint(0, 10), new PixelPoint(0, 1000)),
         ],
-        new AffineTransform2D(100, 0, 0, 100, 0, 0));
+        new AffineTransform2D(100, 0, 0, 100, 0, 0),
+        imageRotationQuarterTurns);
 
     private static void AssertPoint(PixelPoint expected, PixelPoint actual)
     {
