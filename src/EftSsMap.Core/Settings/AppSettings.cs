@@ -11,13 +11,15 @@ public sealed class AppSettings
     public AppSettings(
         string? watchDirectory,
         IReadOnlyList<MapProfile> mapProfiles,
-        string? lastSelectedProfileName)
+        string? lastSelectedProfileName,
+        int bundledMapCatalogVersion = 0)
     {
         ArgumentNullException.ThrowIfNull(mapProfiles);
 
         WatchDirectory = watchDirectory;
         MapProfiles = new ReadOnlyCollection<MapProfile>(mapProfiles.ToArray());
         LastSelectedProfileName = lastSelectedProfileName;
+        BundledMapCatalogVersion = bundledMapCatalogVersion;
     }
 
     public string? WatchDirectory { get; }
@@ -25,4 +27,6 @@ public sealed class AppSettings
     public IReadOnlyList<MapProfile> MapProfiles { get; }
 
     public string? LastSelectedProfileName { get; }
+
+    public int BundledMapCatalogVersion { get; }
 }

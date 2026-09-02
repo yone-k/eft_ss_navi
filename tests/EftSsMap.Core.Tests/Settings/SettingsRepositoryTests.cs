@@ -15,7 +15,8 @@ public sealed class SettingsRepositoryTests
         var settings = new AppSettings(
             @"C:\EFT\Screenshots",
             [CreateProfile("Woods"), CreateProfile("Customs")],
-            "Customs");
+            "Customs",
+            bundledMapCatalogVersion: 2);
 
         // When: The public settings contract is serialized and deserialized with System.Text.Json.
         var json = JsonSerializer.Serialize(settings);
@@ -25,6 +26,7 @@ public sealed class SettingsRepositoryTests
         Assert.NotNull(restored);
         Assert.Equal(settings.WatchDirectory, restored.WatchDirectory);
         Assert.Equal(settings.LastSelectedProfileName, restored.LastSelectedProfileName);
+        Assert.Equal(settings.BundledMapCatalogVersion, restored.BundledMapCatalogVersion);
         Assert.Equal(settings.MapProfiles.Count, restored.MapProfiles.Count);
         AssertProfileEquivalent(settings.MapProfiles[0], restored.MapProfiles[0]);
         AssertProfileEquivalent(settings.MapProfiles[1], restored.MapProfiles[1]);
