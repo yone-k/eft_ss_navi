@@ -4,6 +4,21 @@ namespace EftSsMap.App.Tests.Configuration;
 
 public sealed class ApplicationPublishTests
 {
+    private static readonly string[] BundledMapFileNames =
+    [
+        "customs-re3mr.png",
+        "factory-re3mr.jpg",
+        "ground-zero-xtycho.png",
+        "interchange-re3mr.jpg",
+        "labyrinth-re3mr.png",
+        "lighthouse-jindouz.png",
+        "reserve-jindouz.png",
+        "shoreline-monki-jindouz.png",
+        "streets-jindouz.png",
+        "terminal-re3mr.jpg",
+        "woods-jindouz.png",
+    ];
+
     [Fact]
     public async Task ShouldCopyApplicationXamlResourcesToPublishDirectory()
     {
@@ -71,6 +86,81 @@ public sealed class ApplicationPublishTests
 
             process?.Dispose();
             Directory.Delete(publishDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ShouldPublishBundledMapAssetsAndThirdPartyNotices()
+    {
+        // Given: The application project and an isolated publish directory.
+        var repositoryRoot = FindRepositoryRoot();
+        var projectPath = Path.Combine(
+            repositoryRoot,
+            "src",
+            "EftSsMap.App",
+            "EftSsMap.App.csproj");
+        var publishDirectory = Path.Combine(
+            Path.GetTempPath(),
+            $"eft-ss-map-assets-{Guid.NewGuid():N}");
+
+        var startInfo = new ProcessStartInfo("dotnet")
+        {
+            WorkingDirectory = repositoryRoot,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        startInfo.ArgumentList.Add("publish");
+        startInfo.ArgumentList.Add(projectPath);
+        startInfo.ArgumentList.Add("-c");
+        startInfo.ArgumentList.Add("Release");
+        startInfo.ArgumentList.Add("-r");
+        startInfo.ArgumentList.Add("win-x64");
+        startInfo.ArgumentList.Add("--no-restore");
+        startInfo.ArgumentList.Add("-o");
+        startInfo.ArgumentList.Add(publishDirectory);
+
+        Process? process = null;
+        try
+        {
+            // When: A release artifact is published.
+            process = Process.Start(startInfo);
+            Assert.NotNull(process);
+            var standardOutput = process.StandardOutput.ReadToEndAsync();
+            var standardError = process.StandardError.ReadToEndAsync();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await process.WaitForExitAsync(timeout.Token);
+            var diagnosticOutput = string.Join(
+                Environment.NewLine,
+                await standardOutput,
+                await standardError);
+
+            // Then: Every exact calibration image and its attribution notice are distributed.
+            Assert.True(process.ExitCode == 0, diagnosticOutput);
+            var mapDirectory = Path.Combine(publishDirectory, "Assets", "Maps");
+            Assert.Equal(
+                BundledMapFileNames,
+                Directory.GetFiles(mapDirectory)
+                    .Select(Path.GetFileName)
+                    .Order(StringComparer.Ordinal)
+                    .ToArray());
+            Assert.True(
+                File.Exists(Path.Combine(publishDirectory, "THIRD-PARTY-NOTICES.md")),
+                diagnosticOutput);
+        }
+        finally
+        {
+            if (process is { HasExited: false })
+            {
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync();
+            }
+
+            process?.Dispose();
+            if (Directory.Exists(publishDirectory))
+            {
+                Directory.Delete(publishDirectory, recursive: true);
+            }
         }
     }
 

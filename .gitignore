@@ -8,6 +8,6 @@ artifacts/
 publish/
 *.zip
 
-# Local-only EFT assets. Never commit or distribute these files.
+# Local-only EFT assets. Bundled, licensed assets live under src/EftSsMap.App/Assets.
 samples/
-maps/
+/maps/
