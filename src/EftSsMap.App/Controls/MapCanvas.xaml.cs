@@ -1,5 +1,6 @@
 using EftSsMap.App.Imaging;
 using EftSsMap.Core.Calibration;
+using EftSsMap.Core.Settings;
 using EftSsMap.Core.Viewport;
 using System.Globalization;
 using Microsoft.UI.Xaml;
@@ -19,6 +20,7 @@ public sealed class MapCanvas : Grid, IDisposable
     private const double MaximumFitScaleFactor = 32;
     private readonly SKXamlCanvas Surface;
     private readonly CalibrationAnchorOverlay _calibrationAnchorOverlay = new();
+    private readonly MapMarkerOverlay _mapMarkerOverlay = new();
     private readonly MarkerDragInteraction _markerDragInteraction = new();
     private LoadedMapImage? _mapImage;
     private MapImageRotation _imageRotation = new(0);
@@ -111,6 +113,14 @@ public sealed class MapCanvas : Grid, IDisposable
     {
         _markerPosition = position;
         _markerDirection = direction;
+        Surface.Invalidate();
+    }
+
+    public void SetMapMarkers(
+        IReadOnlyList<MapMarker> markers,
+        AffineTransform2D transform)
+    {
+        _mapMarkerOverlay.Set(markers, transform);
         Surface.Invalidate();
     }
 
@@ -209,6 +219,7 @@ public sealed class MapCanvas : Grid, IDisposable
 
         DrawMapImage(canvas);
 
+        DrawMapMarkers(canvas);
         DrawCalibrationAnchors(canvas);
         DrawMarker(canvas);
         canvas.Restore();
@@ -258,6 +269,140 @@ public sealed class MapCanvas : Grid, IDisposable
     }
 
     private static SKPoint ToSkPoint(PixelPoint point) => new((float)point.X, (float)point.Y);
+
+    private void DrawMapMarkers(SKCanvas canvas)
+    {
+        if (_mapImage is null || _viewport is null || _mapMarkerOverlay.Markers.Count == 0)
+        {
+            return;
+        }
+
+        using var darkOutline = new SKPaint
+        {
+            IsAntialias = true,
+            Color = new SKColor(20, 20, 20, 230),
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = 1.5f,
+        };
+        using var pmcExtractPaint = new SKPaint
+        {
+            IsAntialias = true,
+            Color = new SKColor(61, 194, 106, 235),
+            Style = SKPaintStyle.Fill,
+        };
+        using var sharedExtractPaint = new SKPaint
+        {
+            IsAntialias = true,
+            Color = new SKColor(40, 190, 220, 235),
+            Style = SKPaintStyle.Fill,
+        };
+        using var scavExtractPaint = new SKPaint
+        {
+            IsAntialias = true,
+            Color = new SKColor(238, 50, 66, 235),
+            Style = SKPaintStyle.Fill,
+        };
+        using var transitPaint = new SKPaint
+        {
+            IsAntialias = true,
+            Color = new SKColor(255, 145, 35, 235),
+            Style = SKPaintStyle.Fill,
+        };
+        using var spawnPaint = new SKPaint
+        {
+            IsAntialias = true,
+            Color = new SKColor(255, 174, 48, 220),
+            Style = SKPaintStyle.Fill,
+        };
+        using var iconPaint = new SKPaint
+        {
+            IsAntialias = true,
+            Color = SKColors.White,
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = 1.6f,
+            StrokeCap = SKStrokeCap.Round,
+            StrokeJoin = SKStrokeJoin.Round,
+        };
+        using var labelOutline = new SKPaint
+        {
+            IsAntialias = true,
+            Color = new SKColor(15, 15, 15, 235),
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = 3,
+            StrokeJoin = SKStrokeJoin.Round,
+        };
+        using var labelFill = new SKPaint
+        {
+            IsAntialias = true,
+            Color = SKColors.White,
+            Style = SKPaintStyle.Fill,
+        };
+        using var typeface = SKTypeface.FromFamilyName(null, SKFontStyle.Bold);
+        using var labelFont = new SKFont(typeface, 12);
+
+        foreach (var marker in _mapMarkerOverlay.Markers)
+        {
+            var viewPosition = ImageToView(marker.Position);
+            if (viewPosition.X < -100 || viewPosition.Y < -30 ||
+                viewPosition.X > Surface.ActualWidth + 100 ||
+                viewPosition.Y > Surface.ActualHeight + 30)
+            {
+                continue;
+            }
+
+            var center = new SKPoint((float)viewPosition.X, (float)viewPosition.Y);
+            if (marker.Kind == MapMarkerKind.PmcSpawn)
+            {
+                DrawPmcSpawnIcon(canvas, center, spawnPaint, darkOutline);
+                continue;
+            }
+
+            var extractPaint = marker.Kind switch
+            {
+                MapMarkerKind.SharedExtract => sharedExtractPaint,
+                MapMarkerKind.ScavExtract => scavExtractPaint,
+                MapMarkerKind.Transit => transitPaint,
+                _ => pmcExtractPaint,
+            };
+            DrawExtractIcon(canvas, center, extractPaint, darkOutline, iconPaint);
+            if (!string.IsNullOrWhiteSpace(marker.Name))
+            {
+                canvas.DrawText(marker.Name, center.X + 11, center.Y + 4, SKTextAlign.Left, labelFont, labelOutline);
+                canvas.DrawText(marker.Name, center.X + 11, center.Y + 4, SKTextAlign.Left, labelFont, labelFill);
+            }
+        }
+    }
+
+    private static void DrawPmcSpawnIcon(
+        SKCanvas canvas,
+        SKPoint center,
+        SKPaint fill,
+        SKPaint outline)
+    {
+        using var pathBuilder = new SKPathBuilder();
+        pathBuilder.MoveTo(center.X, center.Y - 5);
+        pathBuilder.LineTo(center.X + 5, center.Y);
+        pathBuilder.LineTo(center.X, center.Y + 5);
+        pathBuilder.LineTo(center.X - 5, center.Y);
+        pathBuilder.Close();
+        using var path = pathBuilder.Detach();
+        canvas.DrawPath(path, fill);
+        canvas.DrawPath(path, outline);
+    }
+
+    private static void DrawExtractIcon(
+        SKCanvas canvas,
+        SKPoint center,
+        SKPaint fill,
+        SKPaint outline,
+        SKPaint icon)
+    {
+        canvas.DrawCircle(center, 7.5f, fill);
+        canvas.DrawCircle(center, 7.5f, outline);
+        canvas.DrawLine(center.X - 3.5f, center.Y, center.X + 3.5f, center.Y, icon);
+        canvas.DrawLine(center.X + 3.5f, center.Y, center.X + 1, center.Y - 2.5f, icon);
+        canvas.DrawLine(center.X + 3.5f, center.Y, center.X + 1, center.Y + 2.5f, icon);
+    }
 
     private void DrawCalibrationAnchors(SKCanvas canvas)
     {

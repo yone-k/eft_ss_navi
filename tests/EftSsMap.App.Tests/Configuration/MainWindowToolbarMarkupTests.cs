@@ -52,6 +52,22 @@ public sealed class MainWindowToolbarMarkupTests
     }
 
     [Fact]
+    public void ShouldOrderMapMenuAlphabetically()
+    {
+        // Given: The map-menu construction source.
+        var source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "src",
+            "EftSsMap.App",
+            "MainWindow.xaml.cs"));
+
+        // Then: Profiles are ordered by display name every time the menu opens.
+        Assert.Contains(
+            "_profiles.OrderBy(profile => profile.DisplayName, StringComparer.OrdinalIgnoreCase)",
+            source);
+    }
+
+    [Fact]
     public void ShouldDescribeMapNavigationInPlainLanguage()
     {
         var document = LoadMarkup();

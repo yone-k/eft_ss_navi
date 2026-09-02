@@ -31,12 +31,16 @@ public sealed partial class MainWindow : Window
     private readonly ScreenshotMonitor _screenshotMonitor;
     private readonly SettingsRepository _settingsRepository;
     private readonly string _settingsPath;
+    private IReadOnlyDictionary<string, IReadOnlyList<MapMarker>> _bundledMapMarkers =
+        new Dictionary<string, IReadOnlyList<MapMarker>>(StringComparer.OrdinalIgnoreCase);
+    private IReadOnlyList<MapProfile> _bundledProfiles = [];
     private PositionCorrectionSession? _correctionSession;
     private ProgressiveCalibrationSession? _progressiveCalibrationSession;
     private PositionObservation? _pendingCalibrationObservation;
     private string? _pendingCalibrationFileName;
     private MapProfile? _selectedProfile;
     private string? _watchDirectory;
+    private int _bundledMapCatalogVersion;
     private bool _initialized;
     private bool _isClosed;
 
@@ -80,6 +84,8 @@ public sealed partial class MainWindow : Window
         AppSettings? settings = null;
         string? settingsFailureMessage = null;
         string? watchFailureMessage = null;
+        var settingsLoadFailed = false;
+        var bundledCatalogUpdated = false;
         if (_settingsFileSystem.FileExists(_settingsPath))
         {
             var loadResult = _settingsRepository.Load();
@@ -89,10 +95,34 @@ public sealed partial class MainWindow : Window
             }
             else
             {
+                settingsLoadFailed = true;
                 settingsFailureMessage =
                     $"設定を読み込めません。元の設定ファイルは上書きしません。{loadResult.ErrorMessage}";
             }
         }
+
+        if (!settingsLoadFailed)
+        {
+            try
+            {
+                var bundledCatalog = BundledMapCatalog.Load(_pickerDefaultDirectories.BundledMaps);
+                _bundledMapMarkers = bundledCatalog.MarkersByProfileName;
+                _bundledProfiles = bundledCatalog.Profiles;
+                var settingsBeforeCatalog = settings ?? new AppSettings(null, [], null);
+                settings = BundledProfileSeeder.Apply(
+                    settingsBeforeCatalog,
+                    bundledCatalog.Profiles,
+                    bundledCatalog.Version,
+                    bundledCatalog.ReplaceableImageFileNames);
+                bundledCatalogUpdated = !ReferenceEquals(settings, settingsBeforeCatalog);
+            }
+            catch (Exception exception)
+            {
+                settingsFailureMessage = $"同梱マップ設定を読み込めません。{exception.Message}";
+            }
+        }
+
+        _bundledMapCatalogVersion = settings?.BundledMapCatalogVersion ?? 0;
 
         if (settings is not null)
         {
@@ -127,6 +157,11 @@ public sealed partial class MainWindow : Window
             {
                 watchFailureMessage = "保存されている監視先が存在しません。新しいフォルダーを選択してください。";
             }
+        }
+
+        if (bundledCatalogUpdated)
+        {
+            settingsFailureMessage ??= PersistSettings();
         }
 
         var lastSelected = settings?.LastSelectedProfileName;
@@ -209,7 +244,7 @@ public sealed partial class MainWindow : Window
         }
         else
         {
-            foreach (var profile in _profiles)
+            foreach (var profile in _profiles.OrderBy(profile => profile.DisplayName, StringComparer.OrdinalIgnoreCase))
             {
                 var item = new MenuFlyoutItem
                 {
@@ -245,6 +280,7 @@ public sealed partial class MainWindow : Window
         ProfileMenuButton.Content = profile?.DisplayName ?? "マップを選択";
         RotateMapLeftButton.IsEnabled = profile is not null;
         RotateMapRightButton.IsEnabled = profile is not null;
+        UpdateCorrectionModeButtonAvailability(profile);
     }
 
     private async Task ActivateProfileAsync(MapProfile profile, bool persist)
@@ -252,6 +288,7 @@ public sealed partial class MainWindow : Window
         ResetCorrectionMode();
         ResetProgressiveCalibration();
         MapControl.SetImageRotation(profile.ImageRotationQuarterTurns);
+        SetBundledMapMarkers(null);
         var generation = _imageLoadTracker.Begin();
         if (_stateCoordinator.SelectedProfile is { } previousProfile)
         {
@@ -301,6 +338,7 @@ public sealed partial class MainWindow : Window
         }
         else if (calibrationValid)
         {
+            SetBundledMapMarkers(profile);
             ApplyStateToView("マップを選択しました。次の有効なスクリーンショットを待っています。");
         }
         else
@@ -444,6 +482,7 @@ public sealed partial class MainWindow : Window
         ResetProgressiveCalibration();
         SetSelectedProfile(null);
         _stateCoordinator.DeleteProfile(selected.DisplayName);
+        SetBundledMapMarkers(null);
         MapControl.SetImage(null);
         ApplyStateToView("プロファイルを削除しました。現在のマップを選択してください。");
         PersistSettings();
@@ -551,6 +590,7 @@ public sealed partial class MainWindow : Window
         MapControl.ShowCalibrationAnchors(
             previewProfile.CalibrationPoints,
             session.ReplacementIndex);
+        SetBundledMapMarkers(previewProfile);
         ConfirmCorrectionButton.Visibility = Visibility.Visible;
         ConfirmCorrectionButton.IsEnabled = true;
         SetStatus("補正位置をプレビューしています。「補正を確定」で保存するか、「補正をキャンセル」で元に戻せます。");
@@ -573,6 +613,8 @@ public sealed partial class MainWindow : Window
         }
 
         _profiles[profileIndex] = correctedProfile;
+        SetSelectedProfile(correctedProfile);
+        SetBundledMapMarkers(correctedProfile);
         _correctionSession = null;
         SetCorrectionMode(false);
         ApplyStateToView(
@@ -598,6 +640,7 @@ public sealed partial class MainWindow : Window
         MapControl.ShowCalibrationAnchors(
             session.OriginalProfile.CalibrationPoints,
             session.ReplacementIndex);
+        SetBundledMapMarkers(session.OriginalProfile);
     }
 
     private async Task<string?> PromptForProfileNameAsync()
@@ -703,10 +746,22 @@ public sealed partial class MainWindow : Window
         FileNameText.Text = state.FileName ?? "—";
         StatusText.Text = messageOverride ?? StatusMessage(state.Status);
         CorrectionModeButton.IsEnabled =
+            PositionCorrectionAvailability.IsAvailable(_selectedProfile, _bundledProfiles)
+            &&
             _progressiveCalibrationSession is null
             && _stateCoordinator.SelectedProfile is not null
             && state.WorldPosition is not null
             && state.MarkerPosition is not null;
+    }
+
+    private void UpdateCorrectionModeButtonAvailability(MapProfile? profile)
+    {
+        var available = PositionCorrectionAvailability.IsAvailable(profile, _bundledProfiles);
+        CorrectionModeButton.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
+        if (!available)
+        {
+            CorrectionModeButton.IsEnabled = false;
+        }
     }
 
     private void SetCorrectionMode(bool enabled)
@@ -732,6 +787,7 @@ public sealed partial class MainWindow : Window
         _correctionSession?.Cancel();
         _correctionSession = null;
         SetCorrectionMode(false);
+        SetBundledMapMarkers(_selectedProfile);
     }
 
     private void SetStatus(string message) => StatusText.Text = message;
@@ -739,7 +795,7 @@ public sealed partial class MainWindow : Window
     private string? PersistSettings()
     {
         var selectedName = _selectedProfile?.DisplayName;
-        var result = _settingsRepository.Save(new AppSettings(_watchDirectory, _profiles.ToArray(), selectedName));
+        var result = _settingsRepository.Save(new AppSettings(_watchDirectory, _profiles.ToArray(), selectedName, _bundledMapCatalogVersion));
         if (!result.IsSuccess)
         {
             var message = $"設定を保存できません。{result.ErrorMessage}";
@@ -766,6 +822,21 @@ public sealed partial class MainWindow : Window
         _profiles[profileIndex] = profile;
         SetSelectedProfile(profile);
         _stateCoordinator.SelectProfile(profile, FingerprintFor(profile), calibrationValid);
+        SetBundledMapMarkers(calibrationValid ? profile : null);
+    }
+
+    private void SetBundledMapMarkers(MapProfile? profile)
+    {
+        if (profile is not null &&
+            profile.CalibrationPoints.Count == 3 &&
+            IsStoredTransformValid(profile.Transform) &&
+            _bundledMapMarkers.TryGetValue(profile.DisplayName, out var markers))
+        {
+            MapControl.SetMapMarkers(markers, profile.Transform);
+            return;
+        }
+
+        MapControl.SetMapMarkers([], default);
     }
 
     private void ResetProgressiveCalibration()

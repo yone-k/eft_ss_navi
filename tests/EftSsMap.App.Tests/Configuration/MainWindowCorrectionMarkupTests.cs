@@ -27,6 +27,23 @@ public sealed class MainWindowCorrectionMarkupTests
     }
 
     [Fact]
+    public void ShouldShowPositionCorrectionOnlyForManuallyAddedProfile()
+    {
+        // Given: The main-window profile selection implementation.
+        var source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "src",
+            "EftSsMap.App",
+            "MainWindow.xaml.cs"));
+
+        // Then: Selection updates visibility through the bundled-profile-aware policy.
+        Assert.Contains("_bundledProfiles = bundledCatalog.Profiles", source);
+        Assert.Contains("UpdateCorrectionModeButtonAvailability(profile)", source);
+        Assert.Contains("PositionCorrectionAvailability.IsAvailable(profile, _bundledProfiles)", source);
+        Assert.Contains("CorrectionModeButton.Visibility =", source);
+    }
+
+    [Fact]
     public void ShouldExposeExplicitConfirmationForDroppedCorrection()
     {
         // Given: The main-window markup.

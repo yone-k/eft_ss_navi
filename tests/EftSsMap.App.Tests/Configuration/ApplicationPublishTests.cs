@@ -6,15 +6,17 @@ public sealed class ApplicationPublishTests
 {
     private static readonly string[] BundledMapFileNames =
     [
-        "customs-monki-glory4lyfe.png",
-        "factory-re3mr.jpg",
-        "ground-zero-xtycho.png",
-        "interchange-tarkov-dev.png",
-        "lighthouse-jindouz.png",
-        "reserve-jindouz.png",
-        "shoreline-monki-jindouz.png",
-        "streets-jindouz.png",
-        "woods-jindouz.png",
+        "catalog.json",
+        "customs-tarkov-dev.png",
+        "factory-tarkov-dev.png",
+        "ground-zero-tarkov-dev.png",
+        "interchange-ground-tarkov-dev.png",
+        "lighthouse-tarkov-dev.png",
+        "markers.json",
+        "reserve-tarkov-dev.png",
+        "shoreline-tarkov-dev.png",
+        "streets-of-tarkov-tarkov-dev.png",
+        "woods-tarkov-dev.png",
     ];
 
     private static readonly string[] UnbundledMapFileNames =
@@ -112,6 +114,9 @@ public sealed class ApplicationPublishTests
         var publishDirectory = Path.Combine(
             Path.GetTempPath(),
             $"eft-ss-map-assets-{Guid.NewGuid():N}");
+        var buildDirectory = Path.Combine(
+            Path.GetTempPath(),
+            $"eft-ss-map-build-{Guid.NewGuid():N}");
 
         Assert.All(
             UnbundledMapFileNames,
@@ -131,6 +136,7 @@ public sealed class ApplicationPublishTests
         startInfo.ArgumentList.Add("-r");
         startInfo.ArgumentList.Add("win-x64");
         startInfo.ArgumentList.Add("--no-restore");
+        startInfo.ArgumentList.Add($"-p:BaseOutputPath={buildDirectory}{Path.DirectorySeparatorChar}");
         startInfo.ArgumentList.Add("-o");
         startInfo.ArgumentList.Add(publishDirectory);
 
@@ -174,6 +180,11 @@ public sealed class ApplicationPublishTests
             if (Directory.Exists(publishDirectory))
             {
                 Directory.Delete(publishDirectory, recursive: true);
+            }
+
+            if (Directory.Exists(buildDirectory))
+            {
+                Directory.Delete(buildDirectory, recursive: true);
             }
         }
     }

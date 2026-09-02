@@ -28,7 +28,7 @@ public sealed class BundledProfileSeederTests
         Assert.Equal("Personal", result.LastSelectedProfileName);
         Assert.Equal(1, result.BundledMapCatalogVersion);
         Assert.Equal(
-            ["Personal", "Customs", "Factory", "Interchange"],
+            ["Customs", "Factory", "Interchange", "Personal"],
             result.MapProfiles.Select(profile => profile.DisplayName));
     }
 
@@ -70,7 +70,119 @@ public sealed class BundledProfileSeederTests
         Assert.Same(existing, result);
     }
 
-    private static MapProfile CreateProfile(string name, string? imagePath = null)
+    [Fact]
+    public void ShouldReplaceLegacyBundledImageWithoutReplacingPersonalImage()
+    {
+        // Given: One profile based on a previously bundled image and one personal profile.
+        var legacy = CreateProfile("Customs", @"C:\OldApp\Assets\Maps\customs-monki-glory4lyfe.png");
+        var personal = CreateProfile("Woods", @"D:\My Maps\woods.png");
+        var existing = new AppSettings(null, [legacy, personal], "Customs");
+        MapProfile[] bundled =
+        [
+            CreateProfile("Customs", @"C:\NewApp\Assets\Maps\customs-tarkov-dev.png"),
+            CreateProfile("Woods", @"C:\NewApp\Assets\Maps\woods-tarkov-dev.png"),
+        ];
+
+        // When: The tarkov.dev catalog replaces known legacy bundled files.
+        var result = BundledProfileSeeder.Apply(
+            existing,
+            bundled,
+            catalogVersion: 1,
+            replaceableImageFileNames: ["customs-monki-glory4lyfe.png", "woods-jindouz.png"]);
+
+        // Then: Only the known bundled image is migrated to the new calibrated profile.
+        Assert.Equal(@"C:\NewApp\Assets\Maps\customs-tarkov-dev.png", result.MapProfiles[0].ImagePath);
+        Assert.Equal(personal.ImagePath, result.MapProfiles[1].ImagePath);
+    }
+
+    [Fact]
+    public void ShouldRenameExistingBundledProfileAndPreserveItsSelection()
+    {
+        // Given: Version 1 settings still contain the old SOT display name.
+        var imageHash = new string('b', 64);
+        var legacy = CreateProfile(
+            "SOT",
+            @"C:\OldApp\Assets\Maps\streets-of-tarkov-tarkov-dev.png",
+            imageHash);
+        var existing = new AppSettings(null, [legacy], "SOT", bundledMapCatalogVersion: 1);
+        var renamed = CreateProfile(
+            "Street Of Tarkov",
+            @"C:\NewApp\Assets\Maps\streets-of-tarkov-tarkov-dev.png",
+            imageHash);
+
+        // When: The version 2 catalog is applied.
+        var result = BundledProfileSeeder.Apply(
+            existing,
+            [renamed],
+            catalogVersion: 2,
+            replaceableImageFileNames: ["streets-of-tarkov-tarkov-dev.png"]);
+
+        // Then: The old entry is replaced and the last selection follows its new name.
+        var migrated = Assert.Single(result.MapProfiles);
+        Assert.Equal("Street Of Tarkov", migrated.DisplayName);
+        Assert.Equal(renamed.ImagePath, migrated.ImagePath);
+        Assert.Equal("Street Of Tarkov", result.LastSelectedProfileName);
+    }
+
+    [Fact]
+    public void ShouldNormalizeSelectedBundledDisplayNameWhenCapitalizationChanges()
+    {
+        // Given: Version 2 settings contain the previously released capitalization.
+        var imageHash = new string('c', 64);
+        var existingProfile = CreateProfile(
+            "Street Of Tarkov",
+            @"C:\OldApp\Assets\Maps\streets-of-tarkov-tarkov-dev.png",
+            imageHash);
+        var existing = new AppSettings(
+            null,
+            [existingProfile],
+            "Street Of Tarkov",
+            bundledMapCatalogVersion: 2);
+        var normalized = CreateProfile(
+            "Street of Tarkov",
+            @"C:\NewApp\Assets\Maps\streets-of-tarkov-tarkov-dev.png",
+            imageHash);
+
+        // When: The version 3 catalog corrects the preposition capitalization.
+        var result = BundledProfileSeeder.Apply(
+            existing,
+            [normalized],
+            catalogVersion: 3,
+            replaceableImageFileNames: ["streets-of-tarkov-tarkov-dev.png"]);
+
+        // Then: Both the profile and its persisted selection use the canonical name.
+        var migrated = Assert.Single(result.MapProfiles);
+        Assert.Equal("Street of Tarkov", migrated.DisplayName);
+        Assert.Equal("Street of Tarkov", result.LastSelectedProfileName);
+        Assert.Equal(3, result.BundledMapCatalogVersion);
+    }
+
+    [Fact]
+    public void ShouldSortAllProfilesByDisplayNameWhenCatalogVersionChanges()
+    {
+        // Given: Existing manual maps and bundled maps are in an arbitrary order.
+        var existing = new AppSettings(
+            null,
+            [CreateProfile("Woods"), CreateProfile("Personal"), CreateProfile("Customs")],
+            null,
+            bundledMapCatalogVersion: 1);
+
+        // When: A newer bundled catalog is applied.
+        var result = BundledProfileSeeder.Apply(
+            existing,
+            [CreateProfile("Factory")],
+            catalogVersion: 2);
+
+        // Then: Every profile is stored in case-insensitive alphabetical order.
+        Assert.Equal(
+            ["Customs", "Factory", "Personal", "Woods"],
+            result.MapProfiles.Select(profile => profile.DisplayName));
+    }
+
+    private static MapProfile CreateProfile(
+        string name,
+        string? imagePath = null,
+        string? imageHash = null)
     {
         CalibrationPoint[] points =
         [
@@ -84,7 +196,7 @@ public sealed class BundledProfileSeederTests
             imagePath ?? $@"C:\Bundled\{name}.png",
             100,
             100,
-            new string('a', 64),
+            imageHash ?? new string('a', 64),
             points,
             new AffineTransform2D(10, 0, 0, 10, 0, 0));
     }
