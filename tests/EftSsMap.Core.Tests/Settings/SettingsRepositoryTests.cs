@@ -33,6 +33,28 @@ public sealed class SettingsRepositoryTests
     }
 
     [Fact]
+    public void ShouldRoundTripPartiallyCalibratedProfileForNextLaunch()
+    {
+        // Given: A profile saved after its first detected screenshot was placed.
+        var profile = new MapProfile(
+            "Interchange",
+            @"C:\maps\interchange.png",
+            4096,
+            3440,
+            "hash",
+            [new CalibrationPoint(new WorldPoint(10, 20), new PixelPoint(100, 200))],
+            default);
+        var settings = new AppSettings(@"C:\EFT\Screenshots", [profile], profile.DisplayName);
+
+        // When: The application settings are serialized and restored.
+        var restored = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(settings));
+
+        // Then: Calibration resumes from the saved anchor instead of starting over.
+        var restoredProfile = Assert.Single(Assert.IsType<AppSettings>(restored).MapProfiles);
+        AssertProfileEquivalent(profile, restoredProfile);
+    }
+
+    [Fact]
     public void ShouldWriteTemporaryFileInDestinationDirectoryWhenSaving()
     {
         // Given: A repository whose destination directory is known.

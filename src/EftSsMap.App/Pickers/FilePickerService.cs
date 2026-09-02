@@ -8,15 +8,11 @@ namespace EftSsMap.App.Pickers;
 public sealed class FilePickerService : IFilePickerService
 {
     private static readonly string[] MapImageExtensions = [".png", ".jpg", ".jpeg", ".webp"];
-    private static readonly string[] ScreenshotExtensions = [".png"];
 
     private readonly SemaphoreSlim pickerGate = new(1, 1);
 
-    public Task<PickerResult> PickMapImageAsync(Window owner) =>
-        PickFileAsync(owner, MapImageExtensions, "マップ画像の選択に失敗しました。");
-
-    public Task<PickerResult> PickCalibrationScreenshotAsync(Window owner) =>
-        PickFileAsync(owner, ScreenshotExtensions, "校正用スクリーンショットの選択に失敗しました。");
+    public Task<PickerResult> PickMapImageAsync(Window owner, string? defaultDirectory) =>
+        PickFileAsync(owner, MapImageExtensions, defaultDirectory, "マップ画像の選択に失敗しました。");
 
     public Task<PickerResult> PickFolderAsync(Window owner) =>
         RunPickerAsync(
@@ -32,11 +28,17 @@ public sealed class FilePickerService : IFilePickerService
     private Task<PickerResult> PickFileAsync(
         Window owner,
         IReadOnlyCollection<string> extensions,
+        string? defaultDirectory,
         string failureMessage) =>
         RunPickerAsync(
             async windowId =>
             {
                 var picker = new FileOpenPicker(windowId);
+                if (!string.IsNullOrWhiteSpace(defaultDirectory))
+                {
+                    picker.SuggestedFolder = defaultDirectory;
+                }
+
                 foreach (var extension in extensions)
                 {
                     picker.FileTypeFilter.Add(extension);

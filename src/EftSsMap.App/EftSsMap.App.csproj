@@ -27,7 +27,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="Assets\Maps\**\*">
+    <Content Remove="Assets\Maps\labyrinth-re3mr.png;Assets\Maps\terminal-re3mr.jpg" />
+    <Content
+      Include="Assets\Maps\**\*"
+      Exclude="Assets\Maps\labyrinth-re3mr.png;Assets\Maps\terminal-re3mr.jpg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>

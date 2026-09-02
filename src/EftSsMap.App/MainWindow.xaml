@@ -53,13 +53,11 @@
                         <Border Padding="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="6">
                             <TextBlock x:Name="StatusText" AutomationProperties.LiveSetting="Polite" Text="初期化中です。" TextWrapping="Wrap" />
                         </Border>
-                        <Border x:Name="CalibrationPanel" Padding="12" Background="{ThemeResource AccentFillColorSecondaryBrush}" CornerRadius="6" Visibility="Collapsed">
+                        <Border x:Name="ProgressiveCalibrationPanel" Padding="12" Background="{ThemeResource AccentFillColorSecondaryBrush}" CornerRadius="6" Visibility="Collapsed">
                             <StackPanel Spacing="10">
-                                <TextBlock FontSize="18" FontWeight="SemiBold" Text="3地点校正" />
-                                <TextBlock Text="互いに離れた、識別しやすい非共線の地点を選んでください。" TextWrapping="Wrap" />
-                                <TextBlock x:Name="CalibrationStepText" TextWrapping="Wrap" />
-                                <Button x:Name="ChooseCalibrationScreenshotButton" Click="OnChooseCalibrationScreenshotClick" Content="校正用スクリーンショットを選択" />
-                                <Button Click="OnCancelCalibrationClick" Content="校正をキャンセル" />
+                                <TextBlock x:Name="ProgressiveCalibrationProgressText" FontSize="18" FontWeight="SemiBold" Text="マップ校正 0/3" />
+                                <TextBlock Text="スクリーンショットを検知したら、その位置をマップ上でクリックしてください。" TextWrapping="Wrap" />
+                                <TextBlock x:Name="ProgressiveCalibrationInstructionText" TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>
                     </StackPanel>

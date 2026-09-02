@@ -6,17 +6,21 @@ public sealed class ApplicationPublishTests
 {
     private static readonly string[] BundledMapFileNames =
     [
-        "customs-re3mr.png",
+        "customs-monki-glory4lyfe.png",
         "factory-re3mr.jpg",
         "ground-zero-xtycho.png",
-        "interchange-re3mr.jpg",
-        "labyrinth-re3mr.png",
+        "interchange-tarkov-dev.png",
         "lighthouse-jindouz.png",
         "reserve-jindouz.png",
         "shoreline-monki-jindouz.png",
         "streets-jindouz.png",
-        "terminal-re3mr.jpg",
         "woods-jindouz.png",
+    ];
+
+    private static readonly string[] UnbundledMapFileNames =
+    [
+        "labyrinth-re3mr.png",
+        "terminal-re3mr.jpg",
     ];
 
     [Fact]
@@ -99,9 +103,19 @@ public sealed class ApplicationPublishTests
             "src",
             "EftSsMap.App",
             "EftSsMap.App.csproj");
+        var sourceMapDirectory = Path.Combine(
+            repositoryRoot,
+            "src",
+            "EftSsMap.App",
+            "Assets",
+            "Maps");
         var publishDirectory = Path.Combine(
             Path.GetTempPath(),
             $"eft-ss-map-assets-{Guid.NewGuid():N}");
+
+        Assert.All(
+            UnbundledMapFileNames,
+            fileName => Assert.True(File.Exists(Path.Combine(sourceMapDirectory, fileName))));
 
         var startInfo = new ProcessStartInfo("dotnet")
         {

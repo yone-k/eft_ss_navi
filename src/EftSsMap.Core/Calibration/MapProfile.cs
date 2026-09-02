@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using EftSsMap.Core.Images;
 
 namespace EftSsMap.Core.Calibration;
 
@@ -7,6 +8,19 @@ namespace EftSsMap.Core.Calibration;
 /// </summary>
 public sealed class MapProfile
 {
+    public static MapProfile CreateUncalibrated(string displayName, ImageFingerprint fingerprint)
+    {
+        ArgumentNullException.ThrowIfNull(fingerprint);
+        return new MapProfile(
+            displayName,
+            fingerprint.Path,
+            fingerprint.Width,
+            fingerprint.Height,
+            fingerprint.Sha256,
+            [],
+            default);
+    }
+
     public MapProfile(
         string displayName,
         string imagePath,

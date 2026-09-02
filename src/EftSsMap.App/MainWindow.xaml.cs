@@ -23,6 +23,7 @@ public sealed partial class MainWindow : Window
     private readonly MapCanvas MapControl;
     private readonly ObservableCollection<MapProfile> _profiles = [];
     private readonly IFilePickerService _pickerService = new FilePickerService();
+    private readonly PickerDefaultDirectories _pickerDefaultDirectories = new(AppContext.BaseDirectory);
     private readonly MainStateCoordinator _stateCoordinator = new();
     private readonly ScreenshotNotificationPresenter _notificationPresenter;
     private readonly SettingsFileSystem _settingsFileSystem = new();
@@ -30,8 +31,10 @@ public sealed partial class MainWindow : Window
     private readonly ScreenshotMonitor _screenshotMonitor;
     private readonly SettingsRepository _settingsRepository;
     private readonly string _settingsPath;
-    private CalibrationDraft? _calibrationDraft;
     private PositionCorrectionSession? _correctionSession;
+    private ProgressiveCalibrationSession? _progressiveCalibrationSession;
+    private PositionObservation? _pendingCalibrationObservation;
+    private string? _pendingCalibrationFileName;
     private MapProfile? _selectedProfile;
     private string? _watchDirectory;
     private bool _initialized;
@@ -231,7 +234,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        CancelCalibration(clearMap: false);
+        ResetProgressiveCalibration();
         SetSelectedProfile(profile);
         await ActivateProfileAsync(profile, persist: true);
     }
@@ -245,6 +248,7 @@ public sealed partial class MainWindow : Window
     private async Task ActivateProfileAsync(MapProfile profile, bool persist)
     {
         ResetCorrectionMode();
+        ResetProgressiveCalibration();
         var generation = _imageLoadTracker.Begin();
         if (_stateCoordinator.SelectedProfile is { } previousProfile)
         {
@@ -266,7 +270,7 @@ public sealed partial class MainWindow : Window
             _stateCoordinator.SelectProfile(
                 profile,
                 new ImageFingerprint(profile.ImagePath, 0, 0, string.Empty),
-                calibrationValid: true);
+                calibrationValid: false);
             ApplyStateToView(loadResult.ErrorMessage ?? "マップ画像を読み込めません。マップを追加し直してください。");
             if (persist)
             {
@@ -278,12 +282,28 @@ public sealed partial class MainWindow : Window
 
         var image = loadResult.Image;
         MapControl.SetImage(image);
-        var calibrationValid = IsStoredTransformValid(profile.Transform);
+        var calibrationComplete = profile.CalibrationPoints.Count == 3;
+        var calibrationValid = calibrationComplete && IsStoredTransformValid(profile.Transform);
         _stateCoordinator.SelectProfile(profile, image.Fingerprint, calibrationValid);
         var validation = ProfileImageValidator.Validate(FingerprintFor(profile), image.Fingerprint);
-        ApplyStateToView(validation == ProfileImageValidationResult.Match && calibrationValid
-            ? "マップを選択しました。次の有効なスクリーンショットを待っています。"
-            : "画像または校正情報が校正時と一致しません。マップを追加し直してください。");
+        if (validation != ProfileImageValidationResult.Match)
+        {
+            ApplyStateToView("画像がマップ追加時と一致しません。マップを追加し直してください。");
+        }
+        else if (profile.CalibrationPoints.Count < 3)
+        {
+            _progressiveCalibrationSession = new ProgressiveCalibrationSession(profile);
+            UpdateProgressiveCalibrationPrompt(waitingForMapClick: false);
+            ApplyStateToView(CalibrationWaitingMessage(profile.CalibrationPoints.Count));
+        }
+        else if (calibrationValid)
+        {
+            ApplyStateToView("マップを選択しました。次の有効なスクリーンショットを待っています。");
+        }
+        else
+        {
+            ApplyStateToView("保存されている校正情報が無効です。マップを追加し直してください。");
+        }
         if (persist)
         {
             PersistSettings();
@@ -304,7 +324,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var imageResult = await _pickerService.PickMapImageAsync(this);
+        var imageResult = await _pickerService.PickMapImageAsync(this, _pickerDefaultDirectories.BundledMaps);
         if (!imageResult.IsSuccess)
         {
             SetStatus(imageResult.ErrorMessage ?? "マップ画像を選択できませんでした。");
@@ -313,13 +333,14 @@ public sealed partial class MainWindow : Window
 
         if (!imageResult.IsCanceled && imageResult.Path is not null)
         {
-            await BeginCalibrationAsync(displayName, imageResult.Path);
+            await AddUncalibratedProfileAsync(displayName, imageResult.Path);
         }
     }
 
-    private async Task BeginCalibrationAsync(string displayName, string imagePath)
+    private async Task AddUncalibratedProfileAsync(string displayName, string imagePath)
     {
         ResetCorrectionMode();
+        ResetProgressiveCalibration();
         var generation = _imageLoadTracker.Begin();
         var loadResult = await SkiaMapImageLoader.LoadAsync(imagePath);
         if (!_imageLoadTracker.IsCurrent(generation))
@@ -330,11 +351,10 @@ public sealed partial class MainWindow : Window
 
         if (!loadResult.IsSuccess || loadResult.Image is null)
         {
-            SetStatus(loadResult.ErrorMessage ?? "校正用マップ画像を読み込めませんでした。");
+            SetStatus(loadResult.ErrorMessage ?? "マップ画像を読み込めませんでした。");
             return;
         }
 
-        SetSelectedProfile(null);
         if (_stateCoordinator.SelectedProfile is { } previousProfile)
         {
             _stateCoordinator.DeleteProfile(previousProfile.DisplayName);
@@ -342,97 +362,56 @@ public sealed partial class MainWindow : Window
 
         MapControl.SetImage(loadResult.Image);
         MapControl.SetMarker(null, null);
-        _calibrationDraft = new CalibrationDraft(displayName, loadResult.Image.Fingerprint);
-        CalibrationPanel.Visibility = Visibility.Visible;
-        ChooseCalibrationScreenshotButton.IsEnabled = true;
-        UpdateCalibrationPrompt();
-        SetStatus("3地点校正を開始しました。");
-    }
-
-    private async void OnChooseCalibrationScreenshotClick(object sender, RoutedEventArgs e)
-    {
-        if (_calibrationDraft is null)
-        {
-            return;
-        }
-
-        var result = await _pickerService.PickCalibrationScreenshotAsync(this);
-        if (!result.IsSuccess)
-        {
-            SetStatus(result.ErrorMessage ?? "校正用スクリーンショットを選択できませんでした。");
-            return;
-        }
-
-        if (result.IsCanceled || result.Path is null)
-        {
-            return;
-        }
-
-        var fileName = Path.GetFileName(result.Path);
-        if (!ScreenshotFileNameParser.TryParse(fileName, out var observation) || observation is null)
-        {
-            SetStatus($"校正用スクリーンショットのファイル名を解析できません: {fileName}");
-            return;
-        }
-
-        _calibrationDraft.PendingWorldPoint = new WorldPoint(observation.Position.X, observation.Position.Z);
-        ChooseCalibrationScreenshotButton.IsEnabled = false;
-        CalibrationStepText.Text = $"地点 {_calibrationDraft.Points.Count + 1}/3: マップ上の同じ地点をクリックしてください。";
+        var profile = MapProfile.CreateUncalibrated(displayName, loadResult.Image.Fingerprint);
+        _profiles.Add(profile);
+        SetSelectedProfile(profile);
+        _progressiveCalibrationSession = new ProgressiveCalibrationSession(profile);
+        _stateCoordinator.SelectProfile(profile, loadResult.Image.Fingerprint, calibrationValid: false);
+        UpdateProgressiveCalibrationPrompt(waitingForMapClick: false);
+        ApplyStateToView("マップを追加しました。スクリーンショットを検知すると校正位置を尋ねます。");
+        PersistSettings();
     }
 
     private void OnMapImagePixelClicked(object? sender, MapImagePixelClickedEventArgs e)
     {
-        if (_calibrationDraft?.PendingWorldPoint is not { } worldPoint)
+        var session = _progressiveCalibrationSession;
+        if (session is null)
         {
             return;
         }
 
-        _calibrationDraft.Points.Add(new CalibrationPoint(worldPoint, e.ImagePixel));
-        _calibrationDraft.PendingWorldPoint = null;
-        if (_calibrationDraft.Points.Count < 3)
+        var observation = _pendingCalibrationObservation;
+        var fileName = _pendingCalibrationFileName;
+        var placement = session.Place(e.ImagePixel);
+        _pendingCalibrationObservation = null;
+        _pendingCalibrationFileName = null;
+        switch (placement)
         {
-            ChooseCalibrationScreenshotButton.IsEnabled = true;
-            UpdateCalibrationPrompt();
-            return;
+            case ProgressiveCalibrationPlacement.NoPendingPosition:
+                return;
+            case ProgressiveCalibrationPlacement.InvalidAnchor:
+                UpdateProgressiveCalibrationPrompt(waitingForMapClick: false);
+                ApplyStateToView("その地点は既存点と重複または同一直線上です。離れた場所で次のスクリーンショットを撮ってください。");
+                return;
+            case ProgressiveCalibrationPlacement.AnchorAdded:
+                ReplaceSelectedProfile(session.Profile, calibrationValid: false);
+                UpdateProgressiveCalibrationPrompt(waitingForMapClick: false);
+                ApplyStateToView(CalibrationWaitingMessage(session.Profile.CalibrationPoints.Count));
+                PersistSettings();
+                return;
+            case ProgressiveCalibrationPlacement.Completed:
+                ReplaceSelectedProfile(session.Profile, calibrationValid: true);
+                _progressiveCalibrationSession = null;
+                ProgressiveCalibrationPanel.Visibility = Visibility.Collapsed;
+                if (observation is not null && fileName is not null)
+                {
+                    _stateCoordinator.ProcessObservation(observation, fileName);
+                }
+
+                ApplyStateToView("3地点の校正を保存しました。現在位置を表示しています。");
+                PersistSettings();
+                return;
         }
-
-        CompleteCalibration();
-    }
-
-    private void CompleteCalibration()
-    {
-        var draft = _calibrationDraft;
-        if (draft is null || !AffineCalibration.TryCreate(draft.Points, out var transform))
-        {
-            if (draft is not null)
-            {
-                draft.Points.Clear();
-                draft.PendingWorldPoint = null;
-            }
-
-            ChooseCalibrationScreenshotButton.IsEnabled = true;
-            UpdateCalibrationPrompt();
-            SetStatus("3地点が重複、同一直線上、または変換が退化しています。互いに離れた別の3地点を指定してください。");
-            return;
-        }
-
-        var fingerprint = draft.Fingerprint;
-        var profile = new MapProfile(
-            draft.DisplayName,
-            fingerprint.Path,
-            fingerprint.Width,
-            fingerprint.Height,
-            fingerprint.Sha256,
-            draft.Points.ToArray(),
-            transform);
-        _profiles.Add(profile);
-
-        _calibrationDraft = null;
-        CalibrationPanel.Visibility = Visibility.Collapsed;
-        SetSelectedProfile(profile);
-        _stateCoordinator.SelectProfile(profile, fingerprint, calibrationValid: true);
-        ApplyStateToView("校正を保存しました。次の有効なスクリーンショットを待っています。");
-        PersistSettings();
     }
 
     private async void OnDeleteProfileClick(object sender, RoutedEventArgs e)
@@ -458,32 +437,12 @@ public sealed partial class MainWindow : Window
         }
 
         _profiles.Remove(selected);
+        ResetProgressiveCalibration();
         SetSelectedProfile(null);
         _stateCoordinator.DeleteProfile(selected.DisplayName);
         MapControl.SetImage(null);
         ApplyStateToView("プロファイルを削除しました。現在のマップを選択してください。");
         PersistSettings();
-    }
-
-    private void OnCancelCalibrationClick(object sender, RoutedEventArgs e)
-    {
-        CancelCalibration(clearMap: true);
-        SetStatus("校正をキャンセルしました。現在のマップを選択してください。");
-    }
-
-    private void CancelCalibration(bool clearMap)
-    {
-        if (_calibrationDraft is null)
-        {
-            return;
-        }
-
-        _calibrationDraft = null;
-        CalibrationPanel.Visibility = Visibility.Collapsed;
-        if (clearMap)
-        {
-            MapControl.SetImage(null);
-        }
     }
 
     private void OnFitMapClick(object sender, RoutedEventArgs e) => MapControl.FitToView();
@@ -622,6 +581,31 @@ public sealed partial class MainWindow : Window
         var observationEpoch = _stateCoordinator.Epoch;
         EnqueueOnUi(() =>
         {
+            if (observationEpoch != _stateCoordinator.Epoch)
+            {
+                return;
+            }
+
+            var session = _progressiveCalibrationSession;
+            if (session is not null)
+            {
+                if (!session.TryStage(new WorldPoint(observation.Position.X, observation.Position.Z)))
+                {
+                    SetStatus("先に検知した位置をマップ上でクリックしてください。");
+                    return;
+                }
+
+                _pendingCalibrationObservation = observation;
+                _pendingCalibrationFileName = fileName;
+                MapControl.SetMarker(null, null);
+                CoordinatesText.Text = FormatCoordinates(observation);
+                FileNameText.Text = fileName;
+                UpdateProgressiveCalibrationPrompt(waitingForMapClick: true);
+                CorrectionModeButton.IsEnabled = false;
+                SetStatus("検知した現在位置を、マップ上でクリックしてください。");
+                return;
+            }
+
             _notificationPresenter.Accept(observation, fileName, observationEpoch);
             ApplyStateToView();
         });
@@ -668,7 +652,7 @@ public sealed partial class MainWindow : Window
         FileNameText.Text = state.FileName ?? "—";
         StatusText.Text = messageOverride ?? StatusMessage(state.Status);
         CorrectionModeButton.IsEnabled =
-            _calibrationDraft is null
+            _progressiveCalibrationSession is null
             && _stateCoordinator.SelectedProfile is not null
             && state.WorldPosition is not null
             && state.MarkerPosition is not null;
@@ -715,12 +699,46 @@ public sealed partial class MainWindow : Window
         return null;
     }
 
-    private void UpdateCalibrationPrompt()
+    private void ReplaceSelectedProfile(MapProfile profile, bool calibrationValid)
     {
-        if (_calibrationDraft is not null)
+        if (_selectedProfile is null)
         {
-            CalibrationStepText.Text = $"地点 {_calibrationDraft.Points.Count + 1}/3: EFTスクリーンショットを選択してください。";
+            return;
         }
+
+        var profileIndex = _profiles.IndexOf(_selectedProfile);
+        if (profileIndex < 0)
+        {
+            return;
+        }
+
+        _profiles[profileIndex] = profile;
+        SetSelectedProfile(profile);
+        _stateCoordinator.SelectProfile(profile, FingerprintFor(profile), calibrationValid);
+    }
+
+    private void ResetProgressiveCalibration()
+    {
+        _progressiveCalibrationSession = null;
+        _pendingCalibrationObservation = null;
+        _pendingCalibrationFileName = null;
+        ProgressiveCalibrationPanel.Visibility = Visibility.Collapsed;
+    }
+
+    private void UpdateProgressiveCalibrationPrompt(bool waitingForMapClick)
+    {
+        if (_progressiveCalibrationSession is not { } session)
+        {
+            ProgressiveCalibrationPanel.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var completedCount = session.Profile.CalibrationPoints.Count;
+        ProgressiveCalibrationPanel.Visibility = Visibility.Visible;
+        ProgressiveCalibrationProgressText.Text = $"マップ校正 {completedCount}/3";
+        ProgressiveCalibrationInstructionText.Text = waitingForMapClick
+            ? $"地点 {completedCount + 1}/3: 検知した位置をマップ上でクリックしてください。"
+            : $"地点 {completedCount + 1}/3: ゲーム内でスクリーンショットを撮ってください。";
     }
 
     private void OnWindowClosed(object sender, WindowEventArgs args)
@@ -745,6 +763,14 @@ public sealed partial class MainWindow : Window
         profile.CalibratedImageWidth,
         profile.CalibratedImageHeight,
         profile.ImageSha256);
+
+    private static string CalibrationWaitingMessage(int completedCount) =>
+        $"校正 {completedCount}/3。離れた場所でスクリーンショットを撮ってください。";
+
+    private static string FormatCoordinates(PositionObservation observation) =>
+        string.Create(
+            CultureInfo.InvariantCulture,
+            $"X, Y, Z: {observation.Position.X:0.#####}, {observation.Position.Y:0.#####}, {observation.Position.Z:0.#####}");
 
     private static bool IsStoredTransformValid(AffineTransform2D transform)
     {
@@ -771,16 +797,4 @@ public sealed partial class MainWindow : Window
         _ => "状態を確認できません。",
     };
 
-    private sealed class CalibrationDraft(
-        string displayName,
-        ImageFingerprint fingerprint)
-    {
-        public string DisplayName { get; } = displayName;
-
-        public ImageFingerprint Fingerprint { get; } = fingerprint;
-
-        public List<CalibrationPoint> Points { get; } = [];
-
-        public WorldPoint? PendingWorldPoint { get; set; }
-    }
 }

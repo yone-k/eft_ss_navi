@@ -5,6 +5,29 @@ namespace EftSsMap.Core.Tests.Calibration;
 public sealed class MapProfileTests
 {
     [Fact]
+    public void ShouldCreatePersistableProfileBeforeCalibrationStarts()
+    {
+        // Given: A map name and the fingerprint of its selected image.
+        var fingerprint = new EftSsMap.Core.Images.ImageFingerprint(
+            @"C:\maps\interchange.png",
+            4096,
+            3440,
+            "hash");
+
+        // When: The map is added before any screenshots have been detected.
+        var profile = MapProfile.CreateUncalibrated("Interchange", fingerprint);
+
+        // Then: Image identity is retained while calibration remains incomplete.
+        Assert.Equal("Interchange", profile.DisplayName);
+        Assert.Equal(fingerprint.Path, profile.ImagePath);
+        Assert.Equal(fingerprint.Width, profile.CalibratedImageWidth);
+        Assert.Equal(fingerprint.Height, profile.CalibratedImageHeight);
+        Assert.Equal(fingerprint.Sha256, profile.ImageSha256);
+        Assert.Empty(profile.CalibrationPoints);
+        Assert.Equal(default, profile.Transform);
+    }
+
+    [Fact]
     public void ShouldRetainAllCalibrationMetadataWhenProfileIsCreated()
     {
         // Given: Complete metadata from a successful three-point calibration.
