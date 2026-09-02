@@ -23,19 +23,17 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBlock VerticalAlignment="Center" Text="監視先" />
                 <TextBox x:Name="WatchDirectoryText" Grid.Column="1" IsReadOnly="True" PlaceholderText="スクリーンショット監視先を選択してください" />
                 <Button Grid.Column="2" Click="OnChooseWatchDirectoryClick" Content="変更" />
                 <TextBlock Grid.Column="3" Margin="12,0,0,0" VerticalAlignment="Center" Text="現在のマップ" />
-                <ComboBox x:Name="ProfileComboBox" Grid.Column="4" DisplayMemberPath="DisplayName" PlaceholderText="プロファイルを選択" SelectionChanged="OnProfileSelectionChanged" />
-                <Button Grid.Column="5" Click="OnNewProfileClick" Content="新規" />
-                <Button Grid.Column="6" Click="OnRecalibrateClick" Content="再校正" />
-                <Button Grid.Column="7" Click="OnDeleteProfileClick" Content="削除" />
-                <Button x:Name="CorrectionModeButton" Grid.Column="8" Click="OnCorrectionModeClick" Content="位置を補正" IsEnabled="False" />
-                <Button x:Name="ConfirmCorrectionButton" Grid.Column="9" Click="OnConfirmCorrectionClick" Content="補正を確定" Visibility="Collapsed" />
-                <Button Grid.Column="10" Click="OnFitMapClick" Content="全体表示" />
+                <DropDownButton x:Name="ProfileMenuButton" Grid.Column="4" Click="OnProfileMenuClick" Content="マップを選択" HorizontalContentAlignment="Left" />
+                <Button Grid.Column="5" Click="OnNewProfileClick" Content="マップを追加" />
+                <Button Grid.Column="6" Click="OnDeleteProfileClick" Content="マップを削除" />
+                <Button x:Name="CorrectionModeButton" Grid.Column="7" Click="OnCorrectionModeClick" Content="位置を補正" IsEnabled="False" />
+                <Button x:Name="ConfirmCorrectionButton" Grid.Column="8" Click="OnConfirmCorrectionClick" Content="補正を確定" Visibility="Collapsed" />
+                <Button Grid.Column="9" Click="OnFitMapClick" Content="マップ全体を表示" />
             </Grid>
         </Border>
 
@@ -69,6 +67,6 @@
             </Border>
         </Grid>
 
-        <TextBlock Grid.Row="2" Padding="12,6" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="ホイール: ズーム / ドラッグ: パン / 全体表示ボタン: リセット" />
+        <TextBlock Grid.Row="2" Padding="12,6" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="ホイール: 拡大・縮小 / ドラッグ: マップを移動" />
     </Grid>
 </Window>

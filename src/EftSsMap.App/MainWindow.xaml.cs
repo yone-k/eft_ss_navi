@@ -14,6 +14,7 @@ using EftSsMap.Core.Settings;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 
 namespace EftSsMap.App;
 
@@ -31,9 +32,9 @@ public sealed partial class MainWindow : Window
     private readonly string _settingsPath;
     private CalibrationDraft? _calibrationDraft;
     private PositionCorrectionSession? _correctionSession;
+    private MapProfile? _selectedProfile;
     private string? _watchDirectory;
     private bool _initialized;
-    private bool _suppressProfileSelection;
     private bool _isClosed;
 
     public MainWindow()
@@ -57,7 +58,6 @@ public sealed partial class MainWindow : Window
         _screenshotMonitor.ObservationAccepted += OnObservationAccepted;
         _screenshotMonitor.FileNameRejected += OnFileNameRejected;
         _screenshotMonitor.MonitoringFailed += OnMonitoringFailed;
-        ProfileComboBox.ItemsSource = _profiles;
         Closed += OnWindowClosed;
     }
 
@@ -130,9 +130,7 @@ public sealed partial class MainWindow : Window
         var restoredProfile = _profiles.FirstOrDefault(profile => NamesEqual(profile.DisplayName, lastSelected));
         if (restoredProfile is not null)
         {
-            _suppressProfileSelection = true;
-            ProfileComboBox.SelectedItem = restoredProfile;
-            _suppressProfileSelection = false;
+            SetSelectedProfile(restoredProfile);
             await ActivateProfileAsync(restoredProfile, persist: false);
             if ((settingsFailureMessage ?? watchFailureMessage) is { } startupFailureMessage)
             {
@@ -195,15 +193,53 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private async void OnProfileSelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void OnProfileMenuClick(object sender, RoutedEventArgs e)
     {
-        if (_suppressProfileSelection || ProfileComboBox.SelectedItem is not MapProfile profile)
+        var menu = new MenuFlyout();
+        if (_profiles.Count == 0)
+        {
+            menu.Items.Add(new MenuFlyoutItem
+            {
+                Text = "追加済みのマップはありません",
+                IsEnabled = false,
+            });
+        }
+        else
+        {
+            foreach (var profile in _profiles)
+            {
+                var item = new MenuFlyoutItem
+                {
+                    Text = profile.DisplayName,
+                    Tag = profile,
+                };
+                item.Click += OnProfileMenuItemClick;
+                menu.Items.Add(item);
+            }
+        }
+
+        menu.ShowAt(ProfileMenuButton, new FlyoutShowOptions
+        {
+            Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft,
+        });
+    }
+
+    private async void OnProfileMenuItemClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuFlyoutItem { Tag: MapProfile profile })
         {
             return;
         }
 
         CancelCalibration(clearMap: false);
+        SetSelectedProfile(profile);
         await ActivateProfileAsync(profile, persist: true);
+    }
+
+    private void SetSelectedProfile(MapProfile? profile)
+    {
+        _selectedProfile = profile;
+        ProfileMenuButton.Content = profile?.DisplayName ?? "マップを選択";
     }
 
     private async Task ActivateProfileAsync(MapProfile profile, bool persist)
@@ -231,7 +267,7 @@ public sealed partial class MainWindow : Window
                 profile,
                 new ImageFingerprint(profile.ImagePath, 0, 0, string.Empty),
                 calibrationValid: true);
-            ApplyStateToView(loadResult.ErrorMessage ?? "マップ画像を読み込めません。再校正してください。");
+            ApplyStateToView(loadResult.ErrorMessage ?? "マップ画像を読み込めません。マップを追加し直してください。");
             if (persist)
             {
                 PersistSettings();
@@ -247,7 +283,7 @@ public sealed partial class MainWindow : Window
         var validation = ProfileImageValidator.Validate(FingerprintFor(profile), image.Fingerprint);
         ApplyStateToView(validation == ProfileImageValidationResult.Match && calibrationValid
             ? "マップを選択しました。次の有効なスクリーンショットを待っています。"
-            : "画像または校正情報が校正時と一致しません。再校正してください。");
+            : "画像または校正情報が校正時と一致しません。マップを追加し直してください。");
         if (persist)
         {
             PersistSettings();
@@ -277,32 +313,11 @@ public sealed partial class MainWindow : Window
 
         if (!imageResult.IsCanceled && imageResult.Path is not null)
         {
-            await BeginCalibrationAsync(displayName, imageResult.Path, replaceIndex: null);
+            await BeginCalibrationAsync(displayName, imageResult.Path);
         }
     }
 
-    private async void OnRecalibrateClick(object sender, RoutedEventArgs e)
-    {
-        if (ProfileComboBox.SelectedItem is not MapProfile selected)
-        {
-            SetStatus("再校正するマッププロファイルを選択してください。");
-            return;
-        }
-
-        var imageResult = await _pickerService.PickMapImageAsync(this);
-        if (!imageResult.IsSuccess)
-        {
-            SetStatus(imageResult.ErrorMessage ?? "マップ画像を選択できませんでした。");
-            return;
-        }
-
-        if (!imageResult.IsCanceled && imageResult.Path is not null)
-        {
-            await BeginCalibrationAsync(selected.DisplayName, imageResult.Path, _profiles.IndexOf(selected));
-        }
-    }
-
-    private async Task BeginCalibrationAsync(string displayName, string imagePath, int? replaceIndex)
+    private async Task BeginCalibrationAsync(string displayName, string imagePath)
     {
         ResetCorrectionMode();
         var generation = _imageLoadTracker.Begin();
@@ -319,9 +334,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        _suppressProfileSelection = true;
-        ProfileComboBox.SelectedItem = null;
-        _suppressProfileSelection = false;
+        SetSelectedProfile(null);
         if (_stateCoordinator.SelectedProfile is { } previousProfile)
         {
             _stateCoordinator.DeleteProfile(previousProfile.DisplayName);
@@ -329,7 +342,7 @@ public sealed partial class MainWindow : Window
 
         MapControl.SetImage(loadResult.Image);
         MapControl.SetMarker(null, null);
-        _calibrationDraft = new CalibrationDraft(displayName, loadResult.Image.Fingerprint, replaceIndex);
+        _calibrationDraft = new CalibrationDraft(displayName, loadResult.Image.Fingerprint);
         CalibrationPanel.Visibility = Visibility.Visible;
         ChooseCalibrationScreenshotButton.IsEnabled = true;
         UpdateCalibrationPrompt();
@@ -412,20 +425,11 @@ public sealed partial class MainWindow : Window
             fingerprint.Sha256,
             draft.Points.ToArray(),
             transform);
-        if (draft.ReplaceIndex is { } index && index >= 0 && index < _profiles.Count)
-        {
-            _profiles[index] = profile;
-        }
-        else
-        {
-            _profiles.Add(profile);
-        }
+        _profiles.Add(profile);
 
         _calibrationDraft = null;
         CalibrationPanel.Visibility = Visibility.Collapsed;
-        _suppressProfileSelection = true;
-        ProfileComboBox.SelectedItem = profile;
-        _suppressProfileSelection = false;
+        SetSelectedProfile(profile);
         _stateCoordinator.SelectProfile(profile, fingerprint, calibrationValid: true);
         ApplyStateToView("校正を保存しました。次の有効なスクリーンショットを待っています。");
         PersistSettings();
@@ -433,7 +437,7 @@ public sealed partial class MainWindow : Window
 
     private async void OnDeleteProfileClick(object sender, RoutedEventArgs e)
     {
-        if (ProfileComboBox.SelectedItem is not MapProfile selected)
+        if (_selectedProfile is not { } selected)
         {
             SetStatus("削除するマッププロファイルを選択してください。");
             return;
@@ -454,9 +458,7 @@ public sealed partial class MainWindow : Window
         }
 
         _profiles.Remove(selected);
-        _suppressProfileSelection = true;
-        ProfileComboBox.SelectedItem = null;
-        _suppressProfileSelection = false;
+        SetSelectedProfile(null);
         _stateCoordinator.DeleteProfile(selected.DisplayName);
         MapControl.SetImage(null);
         ApplyStateToView("プロファイルを削除しました。現在のマップを選択してください。");
@@ -507,7 +509,7 @@ public sealed partial class MainWindow : Window
             new WorldPoint(position.X, position.Z),
             out var session))
         {
-            SetStatus("置き換える校正点を選べませんでした。再校正してください。");
+            SetStatus("置き換える校正点を選べませんでした。マップを追加し直してください。");
             return;
         }
 
@@ -701,7 +703,7 @@ public sealed partial class MainWindow : Window
 
     private string? PersistSettings()
     {
-        var selectedName = (ProfileComboBox.SelectedItem as MapProfile)?.DisplayName;
+        var selectedName = _selectedProfile?.DisplayName;
         var result = _settingsRepository.Save(new AppSettings(_watchDirectory, _profiles.ToArray(), selectedName));
         if (!result.IsSuccess)
         {
@@ -764,21 +766,18 @@ public sealed partial class MainWindow : Window
         MainViewStatus.ProfileNotSelected => "現在のマップを選択してください。",
         MainViewStatus.ParseError => "スクリーンショットのファイル名を解析できません。",
         MainViewStatus.SettingsError => "設定を読み書きできません。",
-        MainViewStatus.ImageError => "マップ画像が校正時と一致しないか、読み込めません。再校正してください。",
-        MainViewStatus.CalibrationError => "校正が無効です。再校正してください。",
+        MainViewStatus.ImageError => "マップ画像が校正時と一致しないか、読み込めません。マップを追加し直してください。",
+        MainViewStatus.CalibrationError => "校正が無効です。マップを追加し直してください。",
         _ => "状態を確認できません。",
     };
 
     private sealed class CalibrationDraft(
         string displayName,
-        ImageFingerprint fingerprint,
-        int? replaceIndex)
+        ImageFingerprint fingerprint)
     {
         public string DisplayName { get; } = displayName;
 
         public ImageFingerprint Fingerprint { get; } = fingerprint;
-
-        public int? ReplaceIndex { get; } = replaceIndex;
 
         public List<CalibrationPoint> Points { get; } = [];
 

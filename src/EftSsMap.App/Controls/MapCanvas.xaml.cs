@@ -17,10 +17,6 @@ public sealed class MapCanvas : Grid, IDisposable
     private const double ZoomStep = 1.15;
     private const double MinimumFitScaleFactor = 0.25;
     private const double MaximumFitScaleFactor = 32;
-    private const float MarkerRadius = 7;
-    private const float ArrowLength = 46;
-    private const float ArrowHeadLength = 13;
-
     private readonly SKXamlCanvas Surface;
     private readonly CalibrationAnchorOverlay _calibrationAnchorOverlay = new();
     private readonly MarkerDragInteraction _markerDragInteraction = new();
@@ -221,67 +217,38 @@ public sealed class MapCanvas : Grid, IDisposable
 
         var viewPosition = _viewport.ImageToView(position);
         var center = new SKPoint((float)viewPosition.X, (float)viewPosition.Y);
+        var cursor = NavigationCursorGeometry.Create(
+            new PixelPoint(center.X, center.Y),
+            _markerDirection);
+
+        using var pathBuilder = new SKPathBuilder();
+        pathBuilder.MoveTo(ToSkPoint(cursor.Tip));
+        pathBuilder.LineTo(ToSkPoint(cursor.RearLeft));
+        pathBuilder.LineTo(ToSkPoint(cursor.Notch));
+        pathBuilder.LineTo(ToSkPoint(cursor.RearRight));
+        pathBuilder.Close();
+        using var path = pathBuilder.Detach();
 
         using var outlinePaint = new SKPaint
         {
             IsAntialias = true,
             Color = SKColors.White,
             Style = SKPaintStyle.Stroke,
-            StrokeWidth = 2,
+            StrokeJoin = SKStrokeJoin.Round,
+            StrokeWidth = NavigationCursorGeometry.OutlineStrokeWidth,
         };
         using var markerPaint = new SKPaint
         {
             IsAntialias = true,
-            Color = new SKColor(225, 45, 58),
+            Color = new SKColor(238, 50, 66),
             Style = SKPaintStyle.Fill,
         };
 
-        canvas.DrawCircle(center, MarkerRadius, markerPaint);
-        canvas.DrawCircle(center, MarkerRadius, outlinePaint);
-
-        if (_markerDirection is not { } direction)
-        {
-            return;
-        }
-
-        var length = Math.Sqrt((direction.X * direction.X) + (direction.Y * direction.Y));
-        if (!double.IsFinite(length) || length <= double.Epsilon)
-        {
-            return;
-        }
-
-        var directionX = (float)(direction.X / length);
-        var directionY = (float)(direction.Y / length);
-        var tip = new SKPoint(
-            center.X + (directionX * ArrowLength),
-            center.Y + (directionY * ArrowLength));
-
-        using var arrowPaint = new SKPaint
-        {
-            IsAntialias = true,
-            Color = new SKColor(255, 70, 82),
-            Style = SKPaintStyle.Stroke,
-            StrokeCap = SKStrokeCap.Round,
-            StrokeJoin = SKStrokeJoin.Round,
-            StrokeWidth = 4,
-        };
-        canvas.DrawLine(center, tip, arrowPaint);
-
-        var perpendicularX = -directionY;
-        var perpendicularY = directionX;
-        var headBaseX = tip.X - (directionX * ArrowHeadLength);
-        var headBaseY = tip.Y - (directionY * ArrowHeadLength);
-        canvas.DrawLine(
-            tip,
-            new SKPoint(headBaseX + (perpendicularX * ArrowHeadLength * 0.55f),
-                headBaseY + (perpendicularY * ArrowHeadLength * 0.55f)),
-            arrowPaint);
-        canvas.DrawLine(
-            tip,
-            new SKPoint(headBaseX - (perpendicularX * ArrowHeadLength * 0.55f),
-                headBaseY - (perpendicularY * ArrowHeadLength * 0.55f)),
-            arrowPaint);
+        canvas.DrawPath(path, markerPaint);
+        canvas.DrawPath(path, outlinePaint);
     }
+
+    private static SKPoint ToSkPoint(PixelPoint point) => new((float)point.X, (float)point.Y);
 
     private void DrawCalibrationAnchors(SKCanvas canvas)
     {
