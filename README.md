@@ -8,7 +8,9 @@ Escape from Tarkov（EFT）が生成するスクリーンショットの**ファ
 
 - Windows 11 x64
 - 入力するマップ画像: PNG、JPEG、WebP
-- 配布ZIP版: .NET RuntimeおよびWindows App SDK Runtimeの事前インストール不要
+- [.NET 10 Runtime（x64）](https://dotnet.microsoft.com/download/dotnet/10.0)
+- [Windows App SDK Runtime 2.4（x64）](https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads)
+- [Microsoft Visual C++ Redistributable（x64）](https://aka.ms/vs/17/release/vc_redist.x64.exe)
 
 Windows 10、Windows on ARM、x86、MSIX、インストーラー、単一EXEには対応していません。
 
@@ -73,7 +75,7 @@ EFTのスクリーンショット名だけではマップを判定できない�
 - Windows 11 x64
 - .NET 10 SDK
 - Windows向けビルドツール
-- NuGetから復元されるMicrosoft.WindowsAppSDK 2.4.0
+- NuGetから復元されるMicrosoft.WindowsAppSDK Runtime 2.4.0 / WinUI 2.3.6
 - NuGetから復元されるSkiaSharp.Views.WinUI 4.151.1
 
 ## ビルド
@@ -93,15 +95,15 @@ dotnet test EftSsMap.slnx -c Release
 
 テストはファイル名解析、クォータニオン方向、3地点校正、アフィン投影、プロファイル、JSON設定、原子的保存、通知重複排除、監視切替、画像整合性、表示変換、画面状態遷移を、ファイル名文字列と合成データで検証します。
 
-## unpackaged self-contained ZIPを作成する
+## unpackaged framework-dependent ZIPを作成する
 
-単一EXEにはまとめず、publish出力一式をZIP化します。
+単一EXEにはまとめず、publish出力一式をZIP化します。配布物へ.NETとWindows App SDKのランタイムは含めません。
 
 ```powershell
 dotnet publish src/EftSsMap.App/EftSsMap.App.csproj `
   -c Release `
   -r win-x64 `
-  --self-contained true `
+  --self-contained false `
   -o artifacts/publish/win-x64
 
 Compress-Archive `
@@ -110,7 +112,7 @@ Compress-Archive `
   -Force
 ```
 
-ZIPをWindows 11 x64へ展開し、`EftSsMap.App.exe`を起動します。配布物はunpackagedであり、Windows App SDKと.NETのself-containedランタイムファイルを同じフォルダーに保持する必要があります。
+利用者は.NET 10 Runtime（x64）、Windows App SDK Runtime 2.4（x64）、Microsoft Visual C++ Redistributable（x64）を事前にインストールします。その後、ZIPをWindows 11 x64へ展開し、`EftSsMap.App.exe`を起動します。
 
 ## ローカル専用資材
 

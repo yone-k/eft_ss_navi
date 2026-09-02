@@ -6,7 +6,7 @@
 
 Escape from Tarkov（EFT）が新規生成するスクリーンショットのファイル名から現在のワールド座標とカメラ方向を取得し、ユーザーが選択して3地点で校正したローカルマップ画像上へ、最新位置と方向矢印を表示するWindows 11 x64向けデスクトップアプリを新規構築する。
 
-アプリはゲームプロセス、ゲームメモリ、入力、ネットワークへアクセスせず、ユーザーのローカル環境だけで動作する。配布物はunpackagedかつself-containedのZIPとし、.NET RuntimeおよびWindows App SDK Runtimeが未導入のWindows 11 x64でも展開後に起動できる状態を初期リリースの完了条件とする。
+アプリはゲームプロセス、ゲームメモリ、入力、ネットワークへアクセスせず、ユーザーのローカル環境だけで動作する。配布物はunpackagedかつframework-dependentのZIPとし、.NET 10 Runtime、Windows App SDK Runtime 2.4、Microsoft Visual C++ Redistributableを導入済みのWindows 11 x64で展開後に起動できる状態を初期リリースの完了条件とする。
 
 ## スコープ
 
@@ -26,8 +26,8 @@ Escape from Tarkov（EFT）が新規生成するスクリーンショットの�
 - 最新の`X, Y, Z`、処理したファイル名、ユーザーが原因を判断できる状態メッセージを画面へ表示する。
 - 監視先変更、プロファイル切替、選択中プロファイル削除、アプリ再起動では過去位置を復元せず、切替後または起動後の次の有効なスクリーンショットを待つ。
 - `%LOCALAPPDATA%\EftSsMap\settings.json`へ監視先、プロファイル、最終選択プロファイルをJSON保存し、一時ファイル経由の置換で既存設定を保護する。
-- READMEへ利用、校正、ビルド、テスト、self-contained ZIP作成の手順を記載する。
-- 自動テスト、Windows 11 x64での手動確認、クリーン環境での配布物起動確認を行う。
+- READMEへ利用、校正、ビルド、テスト、必要ランタイム、framework-dependent ZIP作成の手順を記載する。
+- 自動テスト、Windows 11 x64での手動確認、必要ランタイムを導入済みのクリーン環境で配布物起動確認を行う。
 
 ### 対象外
 
@@ -53,7 +53,7 @@ Escape from Tarkov（EFT）が新規生成するスクリーンショットの�
 - **`SkiaSharp.Views.WinUI` 4.151.1**: PNG、JPEG、WebPをOS追加コーデックなしでデコードし、同一キャンバスに画像、位置点、方向矢印を描画する。表示用のズーム・パン変換と、元画像ピクセル座標で保持する校正情報を分離する。
 - **`FileSystemWatcher`**: 有効な監視先の`Created`イベントとPNGフィルターだけを購読する。監視開始時点の既存ファイル列挙は行わない。
 - **`System.Text.Json`と原子的な設定置換**: `%LOCALAPPDATA%\EftSsMap\settings.json`へ設定を保存する。保存時は同一ディレクトリの一時ファイルへ書き出してから置換し、読込不能または置換失敗時に既存ファイルを上書きしない。
-- **unpackaged self-contained発行**: `WindowsPackageType=None`、`WindowsAppSDKSelfContained=true`、`SelfContained=true`、RID `win-x64`を設定し、publish出力一式をZIP化する。
+- **unpackaged framework-dependent発行**: `WindowsPackageType=None`、`WindowsAppSDKSelfContained=false`、`SelfContained=false`、RID `win-x64`を設定し、publish出力一式をZIP化する。
 
 ## 実装ステップ
 
@@ -62,7 +62,7 @@ Escape from Tarkov（EFT）が新規生成するスクリーンショットの�
 - **subject**: ソリューションと配布基盤を構築する
 - **activeForm**: ソリューションと配布基盤を構築中
 - **blockedBy**: なし
-- **description**: `EftSsMap.slnx`、`src/EftSsMap.App/EftSsMap.App.csproj`、`src/EftSsMap.Core/EftSsMap.Core.csproj`、`tests/EftSsMap.Core.Tests/EftSsMap.Core.Tests.csproj`を作成し、AppからCoreを参照し、TestsからCoreを参照する。AppへWinUI 3と`SkiaSharp.Views.WinUI` 4.151.1を設定し、unpackaged self-contained `win-x64`発行に必要なプロパティを確定する。`samples/`、`maps/`、ビルド出力、publish出力、ZIPを追跡対象外にする`.gitignore`を作成する。空の各プロジェクトについてReleaseビルド、テスト、publishが成功し、publish出力にアプリと必要なランタイム一式が生成されることを完了条件とする。
+- **description**: `EftSsMap.slnx`、`src/EftSsMap.App/EftSsMap.App.csproj`、`src/EftSsMap.Core/EftSsMap.Core.csproj`、`tests/EftSsMap.Core.Tests/EftSsMap.Core.Tests.csproj`を作成し、AppからCoreを参照し、TestsからCoreを参照する。AppへWinUI 3と`SkiaSharp.Views.WinUI` 4.151.1を設定し、unpackaged framework-dependent `win-x64`発行に必要なプロパティを確定する。`samples/`、`maps/`、ビルド出力、publish出力、ZIPを追跡対象外にする`.gitignore`を作成する。空の各プロジェクトについてReleaseビルド、テスト、publishが成功し、publish出力にアプリ本体とアプリ固有の依存ファイルだけが生成されることを完了条件とする。
 
 ### Task 2: スクリーンショット名解析とカメラ方向計算を実装する
 
@@ -118,7 +118,7 @@ Escape from Tarkov（EFT）が新規生成するスクリーンショットの�
 - **subject**: ドキュメント、配布物、受け入れ検証を完成させる
 - **activeForm**: ドキュメント、配布物、受け入れ検証を実施中
 - **blockedBy**: Task 1, Task 2, Task 3, Task 4, Task 5, Task 6, Task 7, Task 8
-- **description**: `README.md`へWindows 11 x64の動作環境、初回監視先設定、マップ画像選択、3地点校正、現在マップ選択、スクリーンショット撮影による更新、状態エラーからの復旧、Releaseビルド、テスト、unpackaged self-contained publish、publish出力一式のZIP作成手順を記載する。Releaseビルド、全自動テスト、`win-x64` self-contained publishを実行する。Issue #1の13件の手動確認をWindows 11 x64で完了し、ランタイム未導入のクリーン環境でZIPを展開して起動できることを確認する。`git ls-files samples maps`が空で、任意の` samples/`ファイルと`maps/woods.webp`がignoreされ、生のスクリーンショットとコミュニティ製マップがリポジトリおよびZIPに含まれないことを確認する。
+- **description**: `README.md`へWindows 11 x64の動作環境、必要ランタイム、初回監視先設定、マップ画像選択、3地点校正、現在マップ選択、スクリーンショット撮影による更新、状態エラーからの復旧、Releaseビルド、テスト、unpackaged framework-dependent publish、publish出力一式のZIP作成手順を記載する。Releaseビルド、全自動テスト、`win-x64` framework-dependent publishを実行する。Issue #1の13件の手動確認をWindows 11 x64で完了し、必要ランタイムを導入済みのクリーン環境でZIPを展開して起動できることを確認する。`git ls-files samples maps`が空で、任意の` samples/`ファイルと`maps/woods.webp`がignoreされ、生のスクリーンショットとコミュニティ製マップがリポジトリおよびZIPに含まれないことを確認する。
 
 ## 依存関係
 
@@ -170,7 +170,7 @@ Task 1〜8
 ```powershell
 dotnet build EftSsMap.slnx -c Release
 dotnet test EftSsMap.slnx -c Release
-dotnet publish src/EftSsMap.App/EftSsMap.App.csproj -c Release -r win-x64 --self-contained true
+dotnet publish src/EftSsMap.App/EftSsMap.App.csproj -c Release -r win-x64 --self-contained false
 ```
 
 単体テストおよび統合境界テストで次を確認する。
@@ -203,7 +203,7 @@ dotnet publish src/EftSsMap.App/EftSsMap.App.csproj -c Release -r win-x64 --self
 8. 同じ画像パスへ同じ寸法の別合成画像を配置し、プロファイルを再選択するとSHA-256不一致で校正が無効になる。
 9. マップ切替、監視先切替、選択中プロファイル削除、アプリ再起動で古い位置が消え、新規スクリーンショットまで再表示されない。
 10. 無効なファイル名、存在しない監視先、削除済み画像、壊れた画像、無効な校正、読込不能な設定でクラッシュせず、原因別の状態メッセージが表示される。
-11. publish出力一式をZIP化し、.NET RuntimeとWindows App SDK Runtimeを別途導入していないクリーンなWindows 11 x64へ展開して起動できる。
+11. publish出力一式をZIP化し、.NET 10 Runtime、Windows App SDK Runtime 2.4、Microsoft Visual C++ Redistributableを導入済みのクリーンなWindows 11 x64へ展開して起動できる。
 12. `git ls-files samples maps`の出力が空であり、`git check-ignore samples/example.png maps/woods.webp`で両方がignore対象になる。ZIPにも生のスクリーンショットとコミュニティ製マップが含まれない。
 13. 設定の初回保存失敗と既存設定の置換失敗を再現し、既存設定が破損・上書きされず設定エラーが表示される。
 
