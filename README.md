@@ -1,6 +1,6 @@
-# EFT Screenshot Map
+# EFT Screenshot Navi
 
-[![CI](https://github.com/yone-k/eft_ss_map/actions/workflows/ci.yml/badge.svg)](https://github.com/yone-k/eft_ss_map/actions/workflows/ci.yml)
+[![CI](https://github.com/yone-k/eft_ss_navi/actions/workflows/ci.yml/badge.svg)](https://github.com/yone-k/eft_ss_navi/actions/workflows/ci.yml)
 
 Escape from Tarkov（EFT）が生成するスクリーンショットの**ファイル名**から現在座標とカメラ方向を読み取り、マップ上へ最新位置を表示するWindowsアプリです。
 
@@ -28,7 +28,7 @@ Windows 10、Windows on ARM、x86、MSIX、インストーラー、単一EXEに�
 
 1. 必要なランタイムをインストールします。
 2. GitHub Releasesから配布ZIPをダウンロードして展開します。
-3. `EftSsMap.App.exe`を起動します。
+3. `EftSsNavi.App.exe`を起動します。
 
 アプリ本体だけを別の場所へ移動せず、展開したファイル一式を同じフォルダーに置いたまま起動してください。
 
@@ -55,7 +55,7 @@ Windows 10、Windows on ARM、x86、MSIX、インストーラー、単一EXEに�
 - Street of Tarkov
 - Woods
 
-同梱マップでは、右側の凡例に従ってPMC脱出、共同脱出、SCAV脱出、Transit、PMCスポーンも表示します。マップ画像と地点データの出典・ライセンスは[`THIRD-PARTY-NOTICES.md`](src/EftSsMap.App/THIRD-PARTY-NOTICES.md)を参照してください。
+同梱マップでは、右側の凡例に従ってPMC脱出、共同脱出、SCAV脱出、Transit、PMCスポーンも表示します。マップ画像と地点データの出典・ライセンスは[`THIRD-PARTY-NOTICES.md`](src/EftSsNavi.App/THIRD-PARTY-NOTICES.md)を参照してください。
 
 ## 現在位置を表示する
 
@@ -98,7 +98,7 @@ PNG、JPEG、WebP形式の画像を追加できます。
 設定は次のファイルへ保存します。
 
 ```text
-%LOCALAPPDATA%\EftSsMap\settings.json
+%LOCALAPPDATA%\EftSsNavi\settings.json
 ```
 
 保存する情報は、監視ディレクトリ、マップ設定、校正点、最後に選択したマップです。位置履歴、スクリーンショット画像、ゲームアカウント情報は保存しません。選択したスクリーンショットやマップ画像をコピー、移動、削除することもありません。
@@ -107,6 +107,6 @@ PNG、JPEG、WebP形式の画像を追加できます。
 
 ## ライセンスと注意事項
 
-同梱マップと地点データには第三者の著作物が含まれます。利用条件と帰属表示は[`THIRD-PARTY-NOTICES.md`](src/EftSsMap.App/THIRD-PARTY-NOTICES.md)を参照してください。
+同梱マップと地点データには第三者の著作物が含まれます。利用条件と帰属表示は[`THIRD-PARTY-NOTICES.md`](src/EftSsNavi.App/THIRD-PARTY-NOTICES.md)を参照してください。
 
 Escape from TarkovはBattlestate Gamesの商標です。本プロジェクトはBattlestate Gamesとは関係がなく、承認を受けたものでもありません。

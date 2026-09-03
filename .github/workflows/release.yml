@@ -42,16 +42,16 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
 
       - name: Restore application
-        run: dotnet restore src/EftSsMap.App/EftSsMap.App.csproj -r win-x64
+        run: dotnet restore src/EftSsNavi.App/EftSsNavi.App.csproj -r win-x64
 
       - name: Publish application
-        run: dotnet publish src/EftSsMap.App/EftSsMap.App.csproj -c Release -r win-x64 --no-restore -o publish -p:Version=${{ steps.version.outputs.version }}
+        run: dotnet publish src/EftSsNavi.App/EftSsNavi.App.csproj -c Release -r win-x64 --no-restore -o publish -p:Version=${{ steps.version.outputs.version }}
 
       - name: Validate publish output
         shell: pwsh
         run: |
           $requiredFiles = @(
-            'publish/EftSsMap.App.exe'
+            'publish/EftSsNavi.App.exe'
             'publish/THIRD-PARTY-NOTICES.md'
             'publish/Assets/Maps/catalog.json'
           )
@@ -71,12 +71,12 @@ jobs:
 
       - name: Create release archive
         shell: pwsh
-        run: Compress-Archive -Path publish/* -DestinationPath EftSsMap-${{ github.ref_name }}-win-x64.zip
+        run: Compress-Archive -Path publish/* -DestinationPath EftSsNavi-${{ github.ref_name }}-win-x64.zip
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: EftSsMap-${{ github.ref_name }}-win-x64.zip
+          files: EftSsNavi-${{ github.ref_name }}-win-x64.zip
           name: ${{ github.ref_name }}
           generate_release_notes: true
           body: |
@@ -91,7 +91,7 @@ jobs:
 
             1. 必要なランタイムをインストールします。
             2. 配布ZIPをダウンロードして展開します。
-            3. `EftSsMap.App.exe`を起動します。
+            3. `EftSsNavi.App.exe`を起動します。
 
             アプリ本体だけを別の場所へ移動せず、展開したファイル一式を同じフォルダーに置いたまま起動してください。
           draft: false
