@@ -134,6 +134,23 @@ public sealed class SettingsRepository
 
     private static bool TryValidate(AppSettings settings, out string errorMessage)
     {
+        if (settings.SignalingWorkerUrl is { } workerUrl
+            && (!Uri.TryCreate(workerUrl, UriKind.Absolute, out var parsedWorkerUrl)
+                || !string.Equals(parsedWorkerUrl.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+                || parsedWorkerUrl.AbsolutePath != "/"
+                || !string.IsNullOrEmpty(parsedWorkerUrl.Query)
+                || !string.IsNullOrEmpty(parsedWorkerUrl.Fragment)))
+        {
+            errorMessage = "The signaling Worker URL must be an HTTPS base URL without a path, query, or fragment.";
+            return false;
+        }
+
+        if (settings.StunServers.Any(string.IsNullOrWhiteSpace))
+        {
+            errorMessage = "Every STUN server entry must contain a value.";
+            return false;
+        }
+
         var profileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var profile in settings.MapProfiles)
         {

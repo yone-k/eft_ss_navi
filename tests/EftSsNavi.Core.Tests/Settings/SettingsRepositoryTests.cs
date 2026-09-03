@@ -7,6 +7,162 @@ namespace EftSsNavi.Core.Tests.Settings;
 public sealed class SettingsRepositoryTests
 {
     private const string DestinationPath = @"C:\Users\tester\AppData\Local\EftSsNavi\settings.json";
+    private const string DefaultStunServer = "stun:stun.l.google.com:19302";
+
+    [Fact]
+    public void ShouldRoundTripWorkerPartySettingsValuesThroughSystemTextJson()
+    {
+        // Given: Settings containing every persisted party configuration value.
+        var settings = new AppSettings(
+            @"C:\EFT\Screenshots",
+            [CreateProfile("Woods")],
+            "Woods",
+            partyDisplayName: "Alpha",
+            signalingWorkerUrl: "https://party.example.test",
+            stunServers: ["stun:one.example.test:3478", "stun:two.example.test:3478"]);
+
+        // When: The settings contract is serialized and deserialized as JSON.
+        var restored = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(settings));
+
+        // Then: All three party configuration values are restored unchanged.
+        Assert.NotNull(restored);
+        Assert.Equal(settings.PartyDisplayName, restored.PartyDisplayName);
+        Assert.Equal(settings.SignalingWorkerUrl, restored.SignalingWorkerUrl);
+        Assert.Equal(settings.StunServers, restored.StunServers);
+    }
+
+    [Fact]
+    public void ShouldRestorePartyDefaultsFromSettingsWrittenBeforePartySupport()
+    {
+        // Given: A legacy settings document with none of the party properties.
+        var fileSystem = new FakeSettingsFileSystem();
+        fileSystem.SeedFile(
+            DestinationPath,
+            """
+            {
+              "WatchDirectory": "C:\\EFT\\Screenshots",
+              "MapProfiles": [],
+              "LastSelectedProfileName": null,
+              "BundledMapCatalogVersion": 0
+            }
+            """);
+        var repository = new SettingsRepository(fileSystem, DestinationPath);
+
+        // When: The legacy document is loaded.
+        var result = repository.Load();
+
+        // Then: Party configuration uses the backward-compatible defaults.
+        Assert.True(result.IsSuccess);
+        var settings = Assert.IsType<AppSettings>(result.Value);
+        Assert.Null(settings.PartyDisplayName);
+        Assert.Null(settings.SignalingWorkerUrl);
+        Assert.Equal([DefaultStunServer], settings.StunServers);
+    }
+
+    [Theory]
+    [InlineData("http://party.example.test")]
+    [InlineData("/relative")]
+    [InlineData("https://party.example.test/rooms")]
+    [InlineData("https://party.example.test?query=value")]
+    [InlineData("https://party.example.test#fragment")]
+    public void ShouldRejectSavingInvalidSignalingWorkerUrl(string invalidUrl)
+    {
+        // Given: Settings whose signaling Worker URL is not an HTTPS base URL.
+        var fileSystem = new FakeSettingsFileSystem();
+        var repository = new SettingsRepository(fileSystem, DestinationPath);
+        var settings = new AppSettings(
+            @"C:\EFT\Screenshots",
+            [CreateProfile("Woods")],
+            "Woods",
+            signalingWorkerUrl: invalidUrl);
+
+        // When: The invalid settings are saved.
+        var result = repository.Save(settings);
+
+        // Then: Validation rejects the settings before writing a temporary file.
+        Assert.False(result.IsSuccess);
+        Assert.Equal(SettingsErrorKind.Validation, result.ErrorKind);
+        Assert.Empty(fileSystem.WritePaths);
+    }
+
+    [Fact]
+    public void ShouldAcceptSavingHttpsSignalingWorkerBaseUrl()
+    {
+        // Given: Settings containing an absolute HTTPS Worker base URL without a path or query.
+        var fileSystem = new FakeSettingsFileSystem();
+        var repository = new SettingsRepository(fileSystem, DestinationPath);
+        var settings = new AppSettings(
+            @"C:\EFT\Screenshots",
+            [CreateProfile("Woods")],
+            "Woods",
+            signalingWorkerUrl: "https://party.example.test");
+
+        // When: The settings are saved.
+        var result = repository.Save(settings);
+
+        // Then: The valid base URL is persisted.
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public void ShouldDropLegacyMqttSettingsOnNextSave()
+    {
+        // Given: A settings document from the MQTT signaling implementation.
+        var fileSystem = new FakeSettingsFileSystem();
+        fileSystem.SeedFile(
+            DestinationPath,
+            """
+            {
+              "WatchDirectory": "C:\\EFT\\Screenshots",
+              "MapProfiles": [],
+              "LastSelectedProfileName": null,
+              "PartyDisplayName": "Alpha",
+              "SignalingBrokerHost": "mqtt.example.test",
+              "SignalingBrokerPort": 8883,
+              "SignalingUsername": "legacy-user",
+              "SignalingPassword": "legacy-secret",
+              "StunServers": ["stun:stun.l.google.com:19302"]
+            }
+            """);
+        var repository = new SettingsRepository(fileSystem, DestinationPath);
+        var loaded = repository.Load();
+        Assert.True(loaded.IsSuccess);
+
+        // When: The loaded settings are saved in the current format.
+        var saved = repository.Save(Assert.IsType<AppSettings>(loaded.Value));
+
+        // Then: Legacy MQTT properties are not written back and the Worker override is null.
+        Assert.True(saved.IsSuccess);
+        using var document = JsonDocument.Parse(fileSystem.GetFile(DestinationPath));
+        Assert.False(document.RootElement.TryGetProperty("SignalingBrokerHost", out _));
+        Assert.False(document.RootElement.TryGetProperty("SignalingBrokerPort", out _));
+        Assert.False(document.RootElement.TryGetProperty("SignalingUsername", out _));
+        Assert.False(document.RootElement.TryGetProperty("SignalingPassword", out _));
+        Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("SignalingWorkerUrl").ValueKind);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void ShouldRejectSavingEmptyStunServerEntry(string emptyEntry)
+    {
+        // Given: Settings whose STUN server list contains an empty element.
+        var fileSystem = new FakeSettingsFileSystem();
+        var repository = new SettingsRepository(fileSystem, DestinationPath);
+        var settings = new AppSettings(
+            @"C:\EFT\Screenshots",
+            [CreateProfile("Woods")],
+            "Woods",
+            stunServers: [DefaultStunServer, emptyEntry]);
+
+        // When: The invalid settings are saved.
+        var result = repository.Save(settings);
+
+        // Then: Validation rejects the settings before writing a temporary file.
+        Assert.False(result.IsSuccess);
+        Assert.Equal(SettingsErrorKind.Validation, result.ErrorKind);
+        Assert.Empty(fileSystem.WritePaths);
+    }
 
     [Fact]
     public void ShouldRoundTripAllSettingsValuesThroughSystemTextJson()

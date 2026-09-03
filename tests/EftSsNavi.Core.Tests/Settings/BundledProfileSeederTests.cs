@@ -179,6 +179,31 @@ public sealed class BundledProfileSeederTests
             result.MapProfiles.Select(profile => profile.DisplayName));
     }
 
+    [Fact]
+    public void ShouldPreservePartySettingsWhenCatalogVersionChanges()
+    {
+        // Given: Worker-based party settings and an older bundled-map catalog.
+        var existing = new AppSettings(
+            null,
+            [],
+            null,
+            bundledMapCatalogVersion: 1,
+            partyDisplayName: "Alpha",
+            signalingWorkerUrl: "https://party.example.test",
+            stunServers: ["stun:example.test:3478"]);
+
+        // When: A newer bundled catalog is applied.
+        var result = BundledProfileSeeder.Apply(
+            existing,
+            [CreateProfile("Woods")],
+            catalogVersion: 2);
+
+        // Then: Rebuilding the settings snapshot retains every party setting.
+        Assert.Equal(existing.PartyDisplayName, result.PartyDisplayName);
+        Assert.Equal(existing.SignalingWorkerUrl, result.SignalingWorkerUrl);
+        Assert.Equal(existing.StunServers, result.StunServers);
+    }
+
     private static MapProfile CreateProfile(
         string name,
         string? imagePath = null,

@@ -19,9 +19,8 @@ public sealed class MainWindowBundledCatalogTests
         Assert.Contains("BundledMapCatalog.Load(_pickerDefaultDirectories.BundledMaps)", source);
         Assert.Contains("BundledProfileSeeder.Apply(", source);
         Assert.Contains("_bundledMapCatalogVersion", source);
-        Assert.Contains(
-            "new AppSettings(_watchDirectory, _profiles.ToArray(), selectedName, _bundledMapCatalogVersion)",
-            source);
+        Assert.Contains("new AppSettings(", source);
+        Assert.Contains("_bundledMapCatalogVersion,", source);
     }
 
     [Fact]

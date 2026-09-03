@@ -137,6 +137,7 @@ public sealed class ApplicationPublishTests
         startInfo.ArgumentList.Add("-r");
         startInfo.ArgumentList.Add("win-x64");
         startInfo.ArgumentList.Add("--no-restore");
+        startInfo.ArgumentList.Add("-nodeReuse:false");
         startInfo.ArgumentList.Add($"-p:BaseOutputPath={buildDirectory}{Path.DirectorySeparatorChar}");
         startInfo.ArgumentList.Add("-o");
         startInfo.ArgumentList.Add(publishDirectory);
@@ -168,6 +169,19 @@ public sealed class ApplicationPublishTests
             Assert.True(
                 File.Exists(Path.Combine(publishDirectory, "THIRD-PARTY-NOTICES.md")),
                 diagnosticOutput);
+            Assert.True(
+                File.Exists(Path.Combine(publishDirectory, "README.md")),
+                diagnosticOutput);
+            Assert.True(
+                File.Exists(Path.Combine(publishDirectory, "EftSsNavi.Sharing.dll")),
+                diagnosticOutput);
+            Assert.True(
+                File.Exists(Path.Combine(publishDirectory, "SIPSorcery.dll")),
+                diagnosticOutput);
+            Assert.False(
+                File.Exists(Path.Combine(publishDirectory, "MQTTnet.dll")),
+                diagnosticOutput);
+            Assert.Empty(Directory.GetFiles(publishDirectory, "*.pdb", SearchOption.AllDirectories));
         }
         finally
         {

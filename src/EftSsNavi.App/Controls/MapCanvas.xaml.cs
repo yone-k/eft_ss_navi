@@ -21,6 +21,7 @@ public sealed class MapCanvas : Grid, IDisposable
     private readonly SKXamlCanvas Surface;
     private readonly CalibrationAnchorOverlay _calibrationAnchorOverlay = new();
     private readonly MapMarkerOverlay _mapMarkerOverlay = new();
+    private readonly PartyMarkerOverlay _partyMarkerOverlay = new();
     private readonly MarkerDragInteraction _markerDragInteraction = new();
     private LoadedMapImage? _mapImage;
     private MapImageRotation _imageRotation = new(0);
@@ -124,6 +125,13 @@ public sealed class MapCanvas : Grid, IDisposable
         Surface.Invalidate();
     }
 
+    public void SetPartyMarkers(IReadOnlyList<PartyMarkerVisual> markers)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _partyMarkerOverlay.Set(markers);
+        Surface.Invalidate();
+    }
+
     public void ShowCalibrationAnchors(
         IReadOnlyList<CalibrationPoint> points,
         int replacementIndex)
@@ -220,6 +228,7 @@ public sealed class MapCanvas : Grid, IDisposable
         DrawMapImage(canvas);
 
         DrawMapMarkers(canvas);
+        DrawPartyMarkers(canvas);
         DrawCalibrationAnchors(canvas);
         DrawMarker(canvas);
         canvas.Restore();
@@ -269,6 +278,87 @@ public sealed class MapCanvas : Grid, IDisposable
     }
 
     private static SKPoint ToSkPoint(PixelPoint point) => new((float)point.X, (float)point.Y);
+
+    private void DrawPartyMarkers(SKCanvas canvas)
+    {
+        if (_mapImage is null || _viewport is null || _partyMarkerOverlay.Markers.Count == 0)
+        {
+            return;
+        }
+
+        using var typeface = SKTypeface.FromFamilyName(null, SKFontStyle.Bold);
+        using var labelFont = new SKFont(typeface, 12);
+
+        foreach (var marker in _partyMarkerOverlay.Markers)
+        {
+            var viewPosition = ImageToView(marker.Position);
+            if (viewPosition.X < -100 || viewPosition.Y < -30 ||
+                viewPosition.X > Surface.ActualWidth + 100 ||
+                viewPosition.Y > Surface.ActualHeight + 30)
+            {
+                continue;
+            }
+
+            var center = new SKPoint((float)viewPosition.X, (float)viewPosition.Y);
+            var alpha = (byte)Math.Round(byte.MaxValue * marker.Opacity);
+            var markerColor = SKColor.Parse(marker.ColorHex).WithAlpha(alpha);
+            using var fillPaint = new SKPaint
+            {
+                IsAntialias = true,
+                Color = markerColor,
+                Style = SKPaintStyle.Fill,
+            };
+            using var outlinePaint = new SKPaint
+            {
+                IsAntialias = true,
+                Color = SKColors.White.WithAlpha(alpha),
+                Style = SKPaintStyle.Stroke,
+                StrokeJoin = SKStrokeJoin.Round,
+                StrokeWidth = NavigationCursorGeometry.OutlineStrokeWidth,
+            };
+
+            if (marker.Shape == PartyMarkerShape.Circle)
+            {
+                canvas.DrawCircle(center, 7.5f, fillPaint);
+                canvas.DrawCircle(center, 7.5f, outlinePaint);
+            }
+            else
+            {
+                PixelPoint? displayDirection = marker.Direction is { } direction
+                    ? _imageRotation.DirectionToDisplay(direction)
+                    : null;
+                var cursor = NavigationCursorGeometry.Create(
+                    new PixelPoint(center.X, center.Y),
+                    displayDirection);
+                using var pathBuilder = new SKPathBuilder();
+                pathBuilder.MoveTo(ToSkPoint(cursor.Tip));
+                pathBuilder.LineTo(ToSkPoint(cursor.RearLeft));
+                pathBuilder.LineTo(ToSkPoint(cursor.Notch));
+                pathBuilder.LineTo(ToSkPoint(cursor.RearRight));
+                pathBuilder.Close();
+                using var path = pathBuilder.Detach();
+                canvas.DrawPath(path, fillPaint);
+                canvas.DrawPath(path, outlinePaint);
+            }
+
+            using var labelOutline = new SKPaint
+            {
+                IsAntialias = true,
+                Color = new SKColor(15, 15, 15, (byte)Math.Round(235 * marker.Opacity)),
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 3,
+                StrokeJoin = SKStrokeJoin.Round,
+            };
+            using var labelFill = new SKPaint
+            {
+                IsAntialias = true,
+                Color = SKColors.White.WithAlpha(alpha),
+                Style = SKPaintStyle.Fill,
+            };
+            canvas.DrawText(marker.DisplayName, center.X + 11, center.Y - 8, SKTextAlign.Left, labelFont, labelOutline);
+            canvas.DrawText(marker.DisplayName, center.X + 11, center.Y - 8, SKTextAlign.Left, labelFont, labelFill);
+        }
+    }
 
     private void DrawMapMarkers(SKCanvas canvas)
     {
