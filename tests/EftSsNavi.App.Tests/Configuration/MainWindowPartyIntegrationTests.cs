@@ -1,8 +1,4 @@
 using EftSsNavi.App.Presentation;
-using EftSsNavi.Core.Settings;
-using EftSsNavi.Sharing.Coordination;
-using EftSsNavi.Sharing.Signaling;
-using System.Reflection;
 
 namespace EftSsNavi.App.Tests.Configuration;
 
@@ -337,26 +333,21 @@ public sealed class MainWindowPartyIntegrationTests
     }
 
     [Fact]
-    public async Task ShouldReportMissingWorkerUrlOnlyWhenPartyActionStarts()
+    public void ShouldUseBundledWorkerUrlWhenSettingIsMissing()
     {
-        // Given: Default settings while the deployment-specific Worker URL is still unset.
-        var factoryType = typeof(PartyUiState).Assembly.GetType(
-            "EftSsNavi.App.Presentation.PartyCoordinatorFactory",
-            throwOnError: true)!;
-        var create = factoryType.GetMethod("Create", BindingFlags.Public | BindingFlags.Static)!;
-        var settings = new AppSettings(null, [], null);
+        // Given: The production coordinator composition source.
+        var source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "src",
+            "EftSsNavi.App",
+            "Presentation",
+            "PartyCoordinatorFactory.cs"));
 
-        // When: The coordinator is composed and hosting is then requested.
-        var coordinator = Assert.IsAssignableFrom<IPartyCoordinator>(
-            create.Invoke(null, [settings, TimeProvider.System]));
-        await using (coordinator)
-        {
-            var error = await Assert.ThrowsAsync<PartySignalingException>(
-                () => coordinator.StartHostAsync("Alpha", mapName: null));
-
-            // Then: Composition remains offline, and the party action reports a signaling failure.
-            Assert.Equal(SignalingFailureKind.ConnectionFailed, error.FailureKind);
-        }
+        // Then: A missing user setting explicitly falls back to the bundled URL.
+        Assert.Contains(
+            "settings.SignalingWorkerUrl ?? SignalingDefaults.WorkerUrl",
+            source,
+            StringComparison.Ordinal);
     }
 
     [Fact]
