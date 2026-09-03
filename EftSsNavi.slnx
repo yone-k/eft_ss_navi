@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/EftSsNavi.App/EftSsNavi.App.csproj">
+      <Platform Project="x64" />
+    </Project>
+    <Project Path="src/EftSsNavi.Core/EftSsNavi.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/EftSsNavi.App.Tests/EftSsNavi.App.Tests.csproj">
+      <Platform Project="x64" />
+    </Project>
+    <Project Path="tests/EftSsNavi.Core.Tests/EftSsNavi.Core.Tests.csproj" />
+  </Folder>
+</Solution>

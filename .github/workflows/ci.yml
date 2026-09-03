@@ -35,10 +35,10 @@ jobs:
             ${{ runner.os }}-nuget-
 
       - name: Restore Core tests
-        run: dotnet restore tests/EftSsMap.Core.Tests/EftSsMap.Core.Tests.csproj
+        run: dotnet restore tests/EftSsNavi.Core.Tests/EftSsNavi.Core.Tests.csproj
 
       - name: Run Core tests
-        run: dotnet test tests/EftSsMap.Core.Tests/EftSsMap.Core.Tests.csproj -c Release --no-restore
+        run: dotnet test tests/EftSsNavi.Core.Tests/EftSsNavi.Core.Tests.csproj -c Release --no-restore
 
   build:
     runs-on: windows-latest
@@ -60,7 +60,7 @@ jobs:
             ${{ runner.os }}-nuget-
 
       - name: Restore solution
-        run: dotnet restore EftSsMap.slnx
+        run: dotnet restore EftSsNavi.slnx
 
       - name: Build solution
-        run: dotnet build EftSsMap.slnx -c Release --no-restore
+        run: dotnet build EftSsNavi.slnx -c Release --no-restore

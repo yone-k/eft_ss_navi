@@ -8,6 +8,6 @@ artifacts/
 publish/
 *.zip
 
-# Local-only EFT assets. Bundled, licensed assets live under src/EftSsMap.App/Assets.
+# Local-only EFT assets. Bundled, licensed assets live under src/EftSsNavi.App/Assets.
 samples/
 /maps/
