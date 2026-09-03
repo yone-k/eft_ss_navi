@@ -25,14 +25,15 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBlock VerticalAlignment="Center" Text="監視先" />
                 <TextBox x:Name="WatchDirectoryText" Grid.Column="1" IsReadOnly="True" PlaceholderText="スクリーンショット監視先を選択してください" />
                 <Button Grid.Column="2" Click="OnChooseWatchDirectoryClick" Content="変更" />
                 <TextBlock Grid.Column="3" Margin="12,0,0,0" VerticalAlignment="Center" Text="現在のマップ" />
                 <DropDownButton x:Name="ProfileMenuButton" Grid.Column="4" Click="OnProfileMenuClick" Content="マップを選択" HorizontalContentAlignment="Left" />
-                <Button Grid.Column="5" Click="OnNewProfileClick" Content="マップを追加" />
-                <Button Grid.Column="6" Click="OnDeleteProfileClick" Content="マップを削除" />
+                <Button x:Name="NewProfileButton" Grid.Column="5" Click="OnNewProfileClick" Content="マップを追加" />
+                <Button x:Name="DeleteProfileButton" Grid.Column="6" Click="OnDeleteProfileClick" Content="マップを削除" />
                 <Button x:Name="CorrectionModeButton" Grid.Column="7" Click="OnCorrectionModeClick" Content="位置を補正" IsEnabled="False" Visibility="Collapsed" />
                 <Button x:Name="ConfirmCorrectionButton" Grid.Column="8" Click="OnConfirmCorrectionClick" Content="補正を確定" Visibility="Collapsed" />
                 <Button x:Name="RotateMapLeftButton" Grid.Column="9" Click="OnRotateMapLeftClick" ToolTipService.ToolTip="マップを左へ90度回転" AutomationProperties.Name="マップを左へ90度回転" IsEnabled="False" Padding="8">
@@ -50,6 +51,34 @@
                     </Viewbox>
                 </Button>
                 <Button Grid.Column="11" Click="OnFitMapClick" Content="マップ全体を表示" />
+                <Button x:Name="PartyButton" Grid.Column="12" Click="OnPartyClick" Content="グループ">
+                    <Button.Flyout>
+                        <Flyout x:Name="PartyFlyout" Placement="BottomEdgeAlignedRight">
+                            <StackPanel Width="300" Spacing="12">
+                                <TextBlock FontSize="18" FontWeight="SemiBold" Text="グループ" />
+                                <StackPanel x:Name="PartyNotJoinedPanel" Spacing="8">
+                                    <TextBlock Text="表示名" />
+                                    <TextBox x:Name="PartyDisplayNameTextBox" MaxLength="16" PlaceholderText="1〜16文字" />
+                                    <Button x:Name="HostPartyButton" Click="OnHostPartyClick" Content="ホストとして開始" HorizontalAlignment="Stretch" />
+                                    <TextBlock Margin="0,4,0,0" Text="ルームコード" />
+                                    <TextBox x:Name="PartyRoomCodeTextBox" MaxLength="19" PlaceholderText="XXXX-XXXX-XXXX-XXXX" CharacterCasing="Upper" />
+                                    <Button x:Name="JoinPartyButton" Click="OnJoinPartyClick" Content="参加" HorizontalAlignment="Stretch" />
+                                </StackPanel>
+                                <StackPanel x:Name="PartyHostPanel" Spacing="8" Visibility="Collapsed">
+                                    <TextBlock Text="ホスト中" FontWeight="SemiBold" />
+                                    <TextBlock x:Name="PartyFlyoutRoomCodeText" FontFamily="Consolas" FontSize="22" Text="-------------------" />
+                                    <Button x:Name="CopyPartyCodeButton" Click="OnCopyPartyCodeClick" Content="コードをコピー" HorizontalAlignment="Stretch" />
+                                    <Button x:Name="ReissuePartyCodeButton" Click="OnReissuePartyCodeClick" Content="コードを再発行" HorizontalAlignment="Stretch" />
+                                    <Button x:Name="EndPartyButton" Click="OnEndPartyClick" Content="セッションを終了" HorizontalAlignment="Stretch" />
+                                </StackPanel>
+                                <StackPanel x:Name="PartyParticipantPanel" Spacing="8" Visibility="Collapsed">
+                                    <TextBlock Text="グループに参加中" FontWeight="SemiBold" />
+                                    <Button x:Name="LeavePartyButton" Click="OnLeavePartyClick" Content="退出" HorizontalAlignment="Stretch" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
             </Grid>
         </Border>
 
@@ -101,6 +130,18 @@
                                 </Canvas>
                                 <TextBlock VerticalAlignment="Center" Text="PMCスポーン" />
                             </StackPanel>
+                        </StackPanel>
+                        <StackPanel x:Name="PartySection" Spacing="6">
+                            <TextBlock x:Name="PartySectionTitleText" FontWeight="SemiBold" Text="グループ" />
+                            <TextBlock x:Name="PartyNotJoinedText" Text="未参加" />
+                            <StackPanel x:Name="PartySelfParticipantRow" Orientation="Horizontal" Spacing="8" Visibility="Collapsed">
+                                <Canvas Width="24" Height="20" VerticalAlignment="Center">
+                                    <Ellipse Canvas.Left="6" Canvas.Top="4" Width="12" Height="12" Fill="#EE3242" Stroke="White" StrokeThickness="1" />
+                                </Canvas>
+                                <TextBlock x:Name="PartySelfDisplayNameText" VerticalAlignment="Center" FontWeight="SemiBold" Text="自分" />
+                                <TextBlock x:Name="PartySelfStatusText" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="位置未受信" />
+                            </StackPanel>
+                            <ItemsControl x:Name="PartyParticipantList" />
                         </StackPanel>
                         <Border x:Name="ProgressiveCalibrationPanel" Padding="12" Background="{ThemeResource AccentFillColorSecondaryBrush}" CornerRadius="6" Visibility="Collapsed">
                             <StackPanel Spacing="10">

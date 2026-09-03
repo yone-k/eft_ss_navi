@@ -1,0 +1,43 @@
+name: Deploy signaling Worker
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - workers/signaling/**
+      - .github/workflows/deploy-worker.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: workers/signaling/package-lock.json
+
+      - name: Install Worker dependencies
+        run: npm ci
+        working-directory: workers/signaling
+
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          workingDirectory: workers/signaling
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy

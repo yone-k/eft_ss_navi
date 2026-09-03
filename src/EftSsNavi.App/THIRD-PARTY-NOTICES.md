@@ -1,5 +1,53 @@
 # Third-Party Notices
 
+## SIPSorcery 10.0.16
+
+EftSsNavi uses SIPSorcery for WebRTC data-channel connectivity.
+
+Source: https://github.com/sipsorcery-org/sipsorcery
+
+License: BSD-3-Clause plus the additional use restriction below.
+
+Copyright (c) 2006–2026 Aaron Clauson
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+3. Neither the name "SIP Sorcery," nor "Aaron Clauson," nor the names of any
+   contributors may be used to endorse or promote products derived from this
+   software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+Additional use restriction from SIPSorcery 10.0.16: this software must not be
+used to further the apartheid policies of the state of Israel. Use,
+modification, or distribution inside Israel and the Occupied Territories is not
+permitted until the demands of the Boycott, Divestment and Sanctions (BDS)
+movement have been met: Israel has ended the occupation and colonization of all
+Arab lands occupied in 1967 and dismantled the Wall; Arab-Palestinian citizens
+of Israel have been granted full equality; and Palestinian refugees have
+obtained the right to return to their homes and properties as stipulated in UN
+Resolution 194. Outside Israel and the Occupied Territories, use, modification,
+and distribution are permitted under BSD-3-Clause without an additional
+commercial-use restriction or copyleft requirement. Where the terms conflict,
+this additional restriction takes precedence. It is not intended to limit the
+rights of Israelis or other people residing outside those territories.
+
 ## tarkov.dev SVG map images
 
 EftSsNavi distributes rasterized ground-level views derived from the following

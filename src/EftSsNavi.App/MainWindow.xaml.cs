@@ -11,10 +11,18 @@ using EftSsNavi.Core.Monitoring;
 using EftSsNavi.Core.Observations;
 using EftSsNavi.Core.Presentation;
 using EftSsNavi.Core.Settings;
+using EftSsNavi.Sharing.Coordination;
+using EftSsNavi.Sharing.Protocol;
+using EftSsNavi.Sharing.Session;
+using EftSsNavi.Sharing.Signaling;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Media;
+using Windows.ApplicationModel.DataTransfer;
+using Ellipse = Microsoft.UI.Xaml.Shapes.Ellipse;
 
 namespace EftSsNavi.App;
 
@@ -31,6 +39,19 @@ public sealed partial class MainWindow : Window
     private readonly ScreenshotMonitor _screenshotMonitor;
     private readonly SettingsRepository _settingsRepository;
     private readonly string _settingsPath;
+    private readonly DispatcherQueueTimer _partyRefreshTimer;
+    private IPartyCoordinator? _partyCoordinator;
+    private PartyCoordinatorState _partyState = PartyCoordinatorState.Empty;
+    private long _partyStateGeneration;
+    private CancellationTokenSource? _partyOperationCancellation;
+    private Task? _partyOperationTask;
+    private bool _partyProjectionCalibrationValid;
+    private string? _partyDisplayName;
+    private string? _signalingWorkerUrl;
+    private IReadOnlyList<string> _stunServers = ["stun:stun.l.google.com:19302"];
+    private bool _partyCloseResumed;
+    private bool _partyCloseInProgress;
+    private bool _suppressNextSessionEnded;
     private IReadOnlyDictionary<string, IReadOnlyList<MapMarker>> _bundledMapMarkers =
         new Dictionary<string, IReadOnlyList<MapMarker>>(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyList<MapProfile> _bundledProfiles = [];
@@ -65,6 +86,11 @@ public sealed partial class MainWindow : Window
         _screenshotMonitor.ObservationAccepted += OnObservationAccepted;
         _screenshotMonitor.FileNameRejected += OnFileNameRejected;
         _screenshotMonitor.MonitoringFailed += OnMonitoringFailed;
+        _partyRefreshTimer = DispatcherQueue.CreateTimer();
+        _partyRefreshTimer.Interval = PartyUiState.RefreshInterval;
+        _partyRefreshTimer.Tick += OnPartyRefreshTimerTick;
+        _partyRefreshTimer.Start();
+        AppWindow.Closing += OnAppWindowClosing;
         Closed += OnWindowClosed;
     }
 
@@ -123,6 +149,7 @@ public sealed partial class MainWindow : Window
         }
 
         _bundledMapCatalogVersion = settings?.BundledMapCatalogVersion ?? 0;
+        ConfigureParty(settings ?? new AppSettings(null, [], null));
 
         if (settings is not null)
         {
@@ -287,6 +314,12 @@ public sealed partial class MainWindow : Window
     {
         ResetCorrectionMode();
         ResetProgressiveCalibration();
+        _partyProjectionCalibrationValid = false;
+        if (_partyCoordinator?.State.Role == PartyCoordinatorRole.Host)
+        {
+            await NotifyHostMapChangedAsync(profile.DisplayName);
+        }
+
         MapControl.SetImageRotation(profile.ImageRotationQuarterTurns);
         SetBundledMapMarkers(null);
         var generation = _imageLoadTracker.Begin();
@@ -338,6 +371,7 @@ public sealed partial class MainWindow : Window
         }
         else if (calibrationValid)
         {
+            _partyProjectionCalibrationValid = calibrationValid;
             SetBundledMapMarkers(profile);
             ApplyStateToView("マップを選択しました。次の有効なスクリーンショットを待っています。");
         }
@@ -412,6 +446,7 @@ public sealed partial class MainWindow : Window
         UpdateProgressiveCalibrationPrompt(waitingForMapClick: false);
         ApplyStateToView("マップを追加しました。スクリーンショットを検知すると校正位置を尋ねます。");
         PersistSettings();
+        await NotifyHostMapChangedAsync(profile.DisplayName);
     }
 
     private void OnMapImagePixelClicked(object? sender, MapImagePixelClickedEventArgs e)
@@ -485,6 +520,11 @@ public sealed partial class MainWindow : Window
         SetBundledMapMarkers(null);
         MapControl.SetImage(null);
         ApplyStateToView("プロファイルを削除しました。現在のマップを選択してください。");
+        if (_partyCoordinator?.State.Role == PartyCoordinatorRole.Host)
+        {
+            await NotifyHostMapChangedAsync(null);
+        }
+
         PersistSettings();
     }
 
@@ -701,8 +741,543 @@ public sealed partial class MainWindow : Window
             }
 
             _notificationPresenter.Accept(observation, fileName, observationEpoch);
+            if (_partyCoordinator?.State.Role is PartyCoordinatorRole.Host or PartyCoordinatorRole.Participant)
+            {
+                _ = SendPartyPositionAsync(observation);
+            }
+
             ApplyStateToView();
         });
+    }
+
+    private async Task SendPartyPositionAsync(PositionObservation observation)
+    {
+        var coordinator = _partyCoordinator;
+        if (coordinator is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var direction = observation.HorizontalForward;
+            await coordinator.SendPositionAsync(new PartyPosition(
+                observation.Position.X,
+                observation.Position.Y,
+                observation.Position.Z,
+                direction?.X,
+                direction?.Y,
+                observation.CapturedAt.ToUniversalTime(),
+                _selectedProfile?.DisplayName));
+        }
+        catch (Exception exception)
+        {
+            EnqueueOnUi(() => SetStatus($"位置をグループへ送信できません。{exception.Message}"));
+        }
+    }
+
+    private void ConfigureParty(AppSettings settings)
+    {
+        _partyDisplayName = settings.PartyDisplayName;
+        _signalingWorkerUrl = settings.SignalingWorkerUrl;
+        _stunServers = settings.StunServers.ToArray();
+        PartyDisplayNameTextBox.Text = _partyDisplayName ?? string.Empty;
+
+        _partyCoordinator = PartyCoordinatorFactory.Create(settings, TimeProvider.System);
+        _partyCoordinator.StateChanged += OnPartyStateChanged;
+        ApplyPartyCoordinatorState(_partyCoordinator.State);
+    }
+
+    private void OnPartyClick(object sender, RoutedEventArgs e)
+    {
+        ApplyPartyCoordinatorState(_partyCoordinator?.State ?? PartyCoordinatorState.Empty);
+    }
+
+    private async void OnHostPartyClick(object sender, RoutedEventArgs e)
+    {
+        var displayName = GetValidPartyDisplayName();
+        if (displayName is null || _partyCoordinator is null)
+        {
+            return;
+        }
+
+        SetPartyActionsEnabled(false);
+        try
+        {
+            _partyDisplayName = displayName;
+            PersistSettings();
+            await TrackPartyOperationAsync(
+                cancellationToken => _partyCoordinator.StartHostAsync(
+                    displayName,
+                    _selectedProfile?.DisplayName,
+                    cancellationToken));
+            SetStatus("グループを開始しました。");
+        }
+        catch (OperationCanceledException) when (_partyCloseInProgress)
+        {
+            // Closing the window cancels an in-flight connection attempt.
+        }
+        catch (PartySignalingException exception) when (exception.RejectReason is { } rejectReason)
+        {
+            SetStatus(PartyStatusMessages.ForSignalingRejection(rejectReason));
+        }
+        catch (PartySignalingException)
+        {
+            SetStatus(PartyStatusMessages.HostSignalingFailure);
+        }
+        catch (Exception exception)
+        {
+            SetStatus($"グループを開始できません。{exception.Message}");
+        }
+        finally
+        {
+            SetPartyActionsEnabled(true);
+        }
+    }
+
+    private async void OnJoinPartyClick(object sender, RoutedEventArgs e)
+    {
+        var displayName = GetValidPartyDisplayName();
+        if (displayName is null || _partyCoordinator is null)
+        {
+            return;
+        }
+
+        if (!RoomCode.TryNormalize(PartyRoomCodeTextBox.Text, out var roomCode))
+        {
+            SetStatus("16文字の有効なルームコードを入力してください。");
+            return;
+        }
+
+        SetPartyActionsEnabled(false);
+        try
+        {
+            _partyDisplayName = displayName;
+            PersistSettings();
+            await TrackPartyOperationAsync(
+                cancellationToken => _partyCoordinator.JoinAsync(displayName, roomCode, cancellationToken));
+            ApplyJoinCompletionStatus(_partyCoordinator.State);
+        }
+        catch (PartyRejectedException exception)
+        {
+            SetStatus(PartyStatusMessages.ForRejection(exception.Reason));
+        }
+        catch (TimeoutException)
+        {
+            SetStatus(PartyStatusMessages.JoinTimeout);
+        }
+        catch (OperationCanceledException) when (_partyCloseInProgress)
+        {
+            // Closing the window cancels an in-flight connection attempt.
+        }
+        catch (PartySignalingException exception) when (exception.RejectReason is { } rejectReason)
+        {
+            SetStatus(PartyStatusMessages.ForSignalingRejection(rejectReason));
+        }
+        catch (PartySignalingException exception) when (
+            exception.FailureKind == SignalingFailureKind.Timeout)
+        {
+            SetStatus(PartyStatusMessages.JoinTimeout);
+        }
+        catch (PartySignalingException)
+        {
+            SetStatus(PartyStatusMessages.ParticipantSignalingFailure);
+        }
+        catch (Exception exception)
+        {
+            SetStatus($"グループに参加できません。{exception.Message}");
+        }
+        finally
+        {
+            SetPartyActionsEnabled(true);
+        }
+    }
+
+    private void OnCopyPartyCodeClick(object sender, RoutedEventArgs e)
+    {
+        if (_partyCoordinator?.State is not { Role: PartyCoordinatorRole.Host, RoomCode: { } roomCode })
+        {
+            return;
+        }
+
+        var package = new DataPackage();
+        package.SetText(RoomCode.Format(roomCode));
+        Clipboard.SetContent(package);
+        SetStatus("ルームコードをコピーしました。");
+    }
+
+    private async void OnReissuePartyCodeClick(object sender, RoutedEventArgs e)
+    {
+        if (_partyCoordinator?.State.Role != PartyCoordinatorRole.Host)
+        {
+            return;
+        }
+
+        try
+        {
+            await _partyCoordinator.ReissueRoomCodeAsync();
+            SetStatus("ルームコードを再発行しました。");
+        }
+        catch (PartySignalingException)
+        {
+            SetStatus(PartyStatusMessages.RoomCodeReissueFailure);
+        }
+        catch (Exception)
+        {
+            SetStatus(PartyStatusMessages.RoomCodeReissueFailure);
+        }
+    }
+
+    private async void OnEndPartyClick(object sender, RoutedEventArgs e)
+    {
+        if (_partyCoordinator is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _partyCoordinator.EndAsync();
+            SetStatus("セッションを終了しました。");
+        }
+        catch (Exception exception)
+        {
+            SetStatus($"セッションを終了できません。{exception.Message}");
+        }
+    }
+
+    private async void OnLeavePartyClick(object sender, RoutedEventArgs e)
+    {
+        if (_partyCoordinator is null)
+        {
+            return;
+        }
+
+        _suppressNextSessionEnded = true;
+        try
+        {
+            await _partyCoordinator.LeaveAsync();
+            SetStatus("グループから退出しました。");
+        }
+        catch (Exception exception)
+        {
+            _suppressNextSessionEnded = false;
+            SetStatus($"グループから退出できません。{exception.Message}");
+        }
+    }
+
+    private string? GetValidPartyDisplayName()
+    {
+        var displayName = PartyDisplayNameTextBox.Text.Trim();
+        if (displayName.Length is < 1 or > 16)
+        {
+            SetStatus("表示名は1〜16文字で入力してください。");
+            return null;
+        }
+
+        return displayName;
+    }
+
+    private void SetPartyActionsEnabled(bool enabled)
+    {
+        HostPartyButton.IsEnabled = enabled;
+        JoinPartyButton.IsEnabled = enabled;
+        ReissuePartyCodeButton.IsEnabled = enabled;
+        EndPartyButton.IsEnabled = enabled;
+        LeavePartyButton.IsEnabled = enabled;
+    }
+
+    private async Task TrackPartyOperationAsync(Func<CancellationToken, Task> operation)
+    {
+        using var cancellation = new CancellationTokenSource();
+        _partyOperationCancellation = cancellation;
+        var task = operation(cancellation.Token);
+        _partyOperationTask = task;
+        try
+        {
+            await task;
+        }
+        finally
+        {
+            if (ReferenceEquals(_partyOperationTask, task))
+            {
+                _partyOperationTask = null;
+                _partyOperationCancellation = null;
+            }
+        }
+    }
+
+    private void ApplyJoinCompletionStatus(PartyCoordinatorState state)
+    {
+        var hasMatchingProfile = state.MapName is not null
+            && _profiles.Any(profile => NamesEqual(profile.DisplayName, state.MapName));
+        var mapStatus = PartyStatusMessagesForMap(state.MapName, hasMatchingProfile);
+        SetStatus(string.IsNullOrEmpty(mapStatus) ? "グループに参加しました。" : mapStatus);
+    }
+
+    private void OnPartyStateChanged(PartyCoordinatorState state)
+    {
+        EnqueueOnUi(() =>
+        {
+            var generation = ++_partyStateGeneration;
+            _ = ApplyPartyCoordinatorStateAsync(state, generation);
+        });
+    }
+
+    private async Task ApplyPartyCoordinatorStateAsync(PartyCoordinatorState state, long generation)
+    {
+        var previousState = _partyState;
+        var previousRole = previousState.Role;
+        string? mapStatus = null;
+        if (state.Role == PartyCoordinatorRole.Participant)
+        {
+            if (state.MapName is null)
+            {
+                mapStatus = PartyStatusMessagesForMap(state.MapName, hasMatchingProfile: false);
+            }
+            else if (!NamesEqual(_selectedProfile?.DisplayName, state.MapName))
+            {
+                var matchingProfile = _profiles.FirstOrDefault(profile => NamesEqual(profile.DisplayName, state.MapName));
+                if (matchingProfile is null)
+                {
+                    mapStatus = PartyStatusMessagesForMap(state.MapName, hasMatchingProfile: false);
+                }
+                else
+                {
+                    SetSelectedProfile(matchingProfile);
+                    await ActivateProfileAsync(matchingProfile, persist: true);
+                }
+            }
+        }
+
+        if (generation != _partyStateGeneration)
+        {
+            return;
+        }
+
+        if (_partyCoordinator is null || !Equals(state, _partyCoordinator.State))
+        {
+            return;
+        }
+
+        var membershipStatus = PartyStatusMessages.ForMembershipChange(previousState, state);
+        ApplyPartyCoordinatorState(state);
+        if (!string.IsNullOrEmpty(mapStatus))
+        {
+            SetStatus(mapStatus);
+        }
+        if (state.Role == PartyCoordinatorRole.None && previousRole == PartyCoordinatorRole.Participant)
+        {
+            if (_suppressNextSessionEnded)
+            {
+                _suppressNextSessionEnded = false;
+            }
+            else
+            {
+                SetStatus(PartyStatusMessages.SessionEnded);
+            }
+        }
+        else if (!string.IsNullOrEmpty(membershipStatus))
+        {
+            SetStatus(membershipStatus);
+        }
+    }
+
+    private void ApplyPartyCoordinatorState(PartyCoordinatorState state)
+    {
+        _partyState = state;
+        var role = state.Role switch
+        {
+            PartyCoordinatorRole.Host => PartyUiRole.Host,
+            PartyCoordinatorRole.Participant => PartyUiRole.Participant,
+            _ => PartyUiRole.NotJoined,
+        };
+        var hasMatchingProfile = state.MapName is not null
+            && _profiles.Any(profile => NamesEqual(profile.DisplayName, state.MapName));
+        ApplyPartyUiState(new PartyUiState(role, state.MapName, hasMatchingProfile));
+        RefreshPartyView();
+    }
+
+    private void ApplyPartyUiState(PartyUiState state)
+    {
+        ProfileMenuButton.IsEnabled = state.MapActionsEnabled;
+        NewProfileButton.IsEnabled = state.MapActionsEnabled;
+        DeleteProfileButton.IsEnabled = state.MapActionsEnabled;
+        PartyNotJoinedPanel.Visibility = state.Role == PartyUiRole.NotJoined
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        PartyHostPanel.Visibility = state.Role == PartyUiRole.Host
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        PartyParticipantPanel.Visibility = state.Role == PartyUiRole.Participant
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        PartyNotJoinedText.Visibility = state.Role == PartyUiRole.NotJoined
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        PartySelfParticipantRow.Visibility = state.Role == PartyUiRole.NotJoined
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        PartySectionTitleText.Text = state.GroupSectionTitle;
+        if (!state.PartyMarkersVisible)
+        {
+            MapControl.SetPartyMarkers([]);
+        }
+    }
+
+    private void OnPartyRefreshTimerTick(DispatcherQueueTimer sender, object args) => RefreshPartyView();
+
+    private void RefreshPartyView()
+    {
+        var state = _partyState;
+        if (state.Role == PartyCoordinatorRole.None)
+        {
+            PartyNotJoinedText.Text = "未参加";
+            PartyParticipantList.Items.Clear();
+            MapControl.SetPartyMarkers([]);
+            return;
+        }
+
+        var formattedRoomCode = state.RoomCode is { } roomCode ? RoomCode.Format(roomCode) : null;
+        PartyFlyoutRoomCodeText.Text = formattedRoomCode ?? "-------------------";
+        PartySelfDisplayNameText.Text = state.LocalDisplayName ?? "自分";
+        PartySelfStatusText.Text = "接続中";
+
+        var now = DateTimeOffset.UtcNow;
+        var remoteParticipants = state.Participants
+            .Where(participant => participant.Id != state.LocalParticipantId)
+            .ToArray();
+        PartyParticipantList.Items.Clear();
+        foreach (var participant in remoteParticipants)
+        {
+            PartyParticipantList.Items.Add(CreateParticipantRow(participant, now));
+        }
+
+        RefreshPartyMarkers(remoteParticipants, now);
+    }
+
+    private StackPanel CreateParticipantRow(SessionParticipant participant, DateTimeOffset now)
+    {
+        var hasPosition = participant.LatestPosition is not null;
+        var isOnSelectedMap = hasPosition
+            && NamesEqual(participant.LatestPosition!.MapName, _selectedProfile?.DisplayName);
+        var age = participant.PositionReceivedAt is { } receivedAt
+            ? now - receivedAt
+            : TimeSpan.Zero;
+        var status = PartyUiState.FormatParticipantPositionStatus(
+            hasPosition,
+            isOnSelectedMap,
+            age,
+            participant.LatestPosition?.MapName);
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        var markerSlot = new Canvas
+        {
+            Width = 24,
+            Height = 20,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var marker = new Ellipse
+        {
+            Width = 12,
+            Height = 12,
+            Fill = new SolidColorBrush(PartyColor(participant.ColorIndex)),
+        };
+        Canvas.SetLeft(marker, 6);
+        Canvas.SetTop(marker, 4);
+        markerSlot.Children.Add(marker);
+        row.Children.Add(markerSlot);
+        row.Children.Add(new TextBlock
+        {
+            Text = participant.DisplayName,
+            VerticalAlignment = VerticalAlignment.Center,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+        });
+        row.Children.Add(new TextBlock
+        {
+            Text = status,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 128, 128, 128)),
+        });
+        return row;
+    }
+
+    private void RefreshPartyMarkers(
+        IReadOnlyList<SessionParticipant> participants,
+        DateTimeOffset now)
+    {
+        var uiState = new PartyUiState(
+            _partyState.Role == PartyCoordinatorRole.Host ? PartyUiRole.Host : PartyUiRole.Participant,
+            _partyState.MapName,
+            _partyState.MapName is not null && NamesEqual(_selectedProfile?.DisplayName, _partyState.MapName));
+        if (!uiState.PartyMarkersVisible || _selectedProfile is null)
+        {
+            MapControl.SetPartyMarkers([]);
+            return;
+        }
+
+        var markers = new List<PartyMarkerVisual>();
+        foreach (var participant in participants)
+        {
+            if (participant.LatestPosition is not { } position)
+            {
+                continue;
+            }
+
+            WorldPoint? direction = position.ForwardX.HasValue && position.ForwardZ.HasValue
+                ? new WorldPoint(position.ForwardX.Value, position.ForwardZ.Value)
+                : null;
+            var projection = PartyMarkerProjector.Project(
+                _selectedProfile,
+                _partyProjectionCalibrationValid,
+                position.MapName,
+                new WorldPoint(position.X, position.Z),
+                direction);
+            if (projection is not { } projected)
+            {
+                continue;
+            }
+
+            var isStale = participant.PositionReceivedAt is { } receivedAt
+                && now - receivedAt > PartySession.StaleThreshold;
+            markers.Add(new PartyMarkerVisual(
+                participant.DisplayName,
+                projected.Position,
+                projected.Direction,
+                participant.ColorIndex,
+                isStale));
+        }
+
+        MapControl.SetPartyMarkers(markers);
+    }
+
+    private static Windows.UI.Color PartyColor(int colorIndex) => colorIndex switch
+    {
+        0 => Windows.UI.Color.FromArgb(255, 47, 128, 237),
+        1 => Windows.UI.Color.FromArgb(255, 242, 201, 76),
+        2 => Windows.UI.Color.FromArgb(255, 155, 81, 224),
+        3 => Windows.UI.Color.FromArgb(255, 255, 111, 181),
+        4 => Windows.UI.Color.FromArgb(255, 245, 245, 245),
+        _ => Windows.UI.Color.FromArgb(255, 255, 255, 255),
+    };
+
+    private static string PartyStatusMessagesForMap(string? mapName, bool hasMatchingProfile) =>
+        new PartyUiState(PartyUiRole.Participant, mapName, hasMatchingProfile).MapStatusMessage;
+
+    private async Task NotifyHostMapChangedAsync(string? mapName)
+    {
+        if (_partyCoordinator?.State.Role != PartyCoordinatorRole.Host)
+        {
+            return;
+        }
+
+        try
+        {
+            await _partyCoordinator.ChangeMapAsync(mapName);
+        }
+        catch (Exception exception)
+        {
+            SetStatus($"グループのマップを変更できません。{exception.Message}");
+        }
     }
 
     private void OnFileNameRejected(string fileName)
@@ -795,7 +1370,14 @@ public sealed partial class MainWindow : Window
     private string? PersistSettings()
     {
         var selectedName = _selectedProfile?.DisplayName;
-        var result = _settingsRepository.Save(new AppSettings(_watchDirectory, _profiles.ToArray(), selectedName, _bundledMapCatalogVersion));
+        var result = _settingsRepository.Save(new AppSettings(
+            _watchDirectory,
+            _profiles.ToArray(),
+            selectedName,
+            _bundledMapCatalogVersion,
+            _partyDisplayName,
+            _signalingWorkerUrl,
+            _stunServers));
         if (!result.IsSuccess)
         {
             var message = $"設定を保存できません。{result.ErrorMessage}";
@@ -822,6 +1404,7 @@ public sealed partial class MainWindow : Window
         _profiles[profileIndex] = profile;
         SetSelectedProfile(profile);
         _stateCoordinator.SelectProfile(profile, FingerprintFor(profile), calibrationValid);
+        _partyProjectionCalibrationValid = calibrationValid;
         SetBundledMapMarkers(calibrationValid ? profile : null);
     }
 
@@ -863,9 +1446,80 @@ public sealed partial class MainWindow : Window
             : $"地点 {completedCount + 1}/3: ゲーム内でスクリーンショットを撮ってください。";
     }
 
+    private async void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
+    {
+        if (_partyCloseResumed)
+        {
+            return;
+        }
+
+        args.Cancel = true;
+        if (_partyCloseInProgress)
+        {
+            return;
+        }
+
+        _partyCloseInProgress = true;
+        _partyOperationCancellation?.Cancel();
+        if (_partyOperationTask is { } partyOperationTask)
+        {
+            try
+            {
+                await partyOperationTask;
+            }
+            catch
+            {
+                // The operation was canceled so party cleanup can proceed.
+            }
+        }
+
+        if (_partyCoordinator is not null)
+        {
+            _suppressNextSessionEnded = true;
+            try
+            {
+                await _partyCoordinator.EndAsync();
+            }
+            catch
+            {
+                // Window shutdown continues after best-effort host notification.
+            }
+
+            try
+            {
+                await _partyCoordinator.LeaveAsync();
+            }
+            catch
+            {
+                // Window shutdown continues after best-effort participant notification.
+            }
+
+            try
+            {
+                await _partyCoordinator.DisposeAsync();
+            }
+            catch
+            {
+                // Window shutdown continues after best-effort resource cleanup.
+            }
+        }
+
+        _partyCloseResumed = true;
+        Close();
+    }
+
     private void OnWindowClosed(object sender, WindowEventArgs args)
     {
         _isClosed = true;
+        AppWindow.Closing -= OnAppWindowClosing;
+        _partyRefreshTimer.Stop();
+        _partyRefreshTimer.Tick -= OnPartyRefreshTimerTick;
+        if (_partyCoordinator is not null)
+        {
+            _partyCoordinator.StateChanged -= OnPartyStateChanged;
+            _ = _partyCoordinator.DisposeAsync();
+        }
+
         _imageLoadTracker.Close();
         _screenshotMonitor.ObservationAccepted -= OnObservationAccepted;
         _screenshotMonitor.FileNameRejected -= OnFileNameRejected;

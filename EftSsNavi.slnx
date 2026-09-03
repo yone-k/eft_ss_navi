@@ -4,11 +4,13 @@
       <Platform Project="x64" />
     </Project>
     <Project Path="src/EftSsNavi.Core/EftSsNavi.Core.csproj" />
+    <Project Path="src/EftSsNavi.Sharing/EftSsNavi.Sharing.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/EftSsNavi.App.Tests/EftSsNavi.App.Tests.csproj">
       <Platform Project="x64" />
     </Project>
     <Project Path="tests/EftSsNavi.Core.Tests/EftSsNavi.Core.Tests.csproj" />
+    <Project Path="tests/EftSsNavi.Sharing.Tests/EftSsNavi.Sharing.Tests.csproj" />
   </Folder>
 </Solution>

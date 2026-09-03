@@ -87,6 +87,9 @@ public static class BundledProfileSeeder
                 .OrderBy(profile => profile.DisplayName, StringComparer.OrdinalIgnoreCase)
                 .ToArray(),
             selectedProfileName,
-            catalogVersion);
+            catalogVersion,
+            settings.PartyDisplayName,
+            settings.SignalingWorkerUrl,
+            settings.StunServers);
     }
 }
