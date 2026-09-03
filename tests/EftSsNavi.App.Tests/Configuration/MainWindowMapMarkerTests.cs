@@ -26,6 +26,25 @@ public sealed class MainWindowMapMarkerTests
         Assert.Contains("new SKColor(255, 145, 35, 235)", mapCanvas);
     }
 
+    [Fact]
+    public void ShouldFitMapInformationAfterSelectionRotationAndFitButton()
+    {
+        var root = FindRepositoryRoot();
+        var mainWindow = File.ReadAllText(Path.Combine(root, "src", "EftSsNavi.App", "MainWindow.xaml.cs"));
+        var mapCanvas = File.ReadAllText(Path.Combine(root, "src", "EftSsNavi.App", "Controls", "MapCanvas.xaml.cs"));
+
+        Assert.Contains(
+            "SetBundledMapMarkers(profile);\n            MapControl.FitToView();",
+            mainWindow.Replace("\r\n", "\n"));
+        Assert.Contains(
+            "private void OnFitMapClick(object sender, RoutedEventArgs e) => MapControl.FitToView();",
+            mainWindow);
+        Assert.Contains(
+            "_imageRotation = rotation;\n        RefreshMapMarkerVisualBounds();\n        FitToView();",
+            mapCanvas.Replace("\r\n", "\n"));
+        Assert.Contains("MapContentViewportFitter.Fit(", mapCanvas);
+    }
+
     private static string FindRepositoryRoot()
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory);

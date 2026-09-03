@@ -373,6 +373,7 @@ public sealed partial class MainWindow : Window
         {
             _partyProjectionCalibrationValid = calibrationValid;
             SetBundledMapMarkers(profile);
+            MapControl.FitToView();
             ApplyStateToView("マップを選択しました。次の有効なスクリーンショットを待っています。");
         }
         else

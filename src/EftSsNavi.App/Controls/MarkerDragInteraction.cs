@@ -23,7 +23,10 @@ public sealed class MarkerDragInteraction
 
     public bool IsDragging { get; private set; }
 
-    public bool TryBegin(PixelPoint pointerView, PixelPoint markerView)
+    public bool TryBegin(
+        PixelPoint pointerView,
+        PixelPoint markerView,
+        double hitRadius = HitRadius)
     {
         var deltaX = pointerView.X - markerView.X;
         var deltaY = pointerView.Y - markerView.Y;
@@ -32,7 +35,9 @@ public sealed class MarkerDragInteraction
             && double.IsFinite(pointerView.Y)
             && double.IsFinite(markerView.X)
             && double.IsFinite(markerView.Y)
-            && ((deltaX * deltaX) + (deltaY * deltaY) <= HitRadius * HitRadius);
+            && double.IsFinite(hitRadius)
+            && hitRadius > 0
+            && ((deltaX * deltaX) + (deltaY * deltaY) <= hitRadius * hitRadius);
         return IsDragging;
     }
 
