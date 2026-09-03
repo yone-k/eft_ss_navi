@@ -340,7 +340,7 @@ public sealed class MapCanvas : Grid, IDisposable
                 Color = SKColors.White.WithAlpha(alpha),
                 Style = SKPaintStyle.Stroke,
                 StrokeJoin = SKStrokeJoin.Round,
-                StrokeWidth = NavigationCursorGeometry.OutlineStrokeWidth,
+                StrokeWidth = NavigationCursorGeometry.GetOutlineStrokeWidth(displayScale: 1),
             };
 
             if (marker.Shape == PartyMarkerShape.Circle)

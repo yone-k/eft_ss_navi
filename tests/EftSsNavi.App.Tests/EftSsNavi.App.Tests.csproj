@@ -6,6 +6,7 @@
     <IsPackable>false</IsPackable>
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <WindowsAppSdkBootstrapInitialize>false</WindowsAppSdkBootstrapInitialize>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,6 +20,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\EftSsNavi.App\EftSsNavi.App.csproj" />
+    <ProjectReference
+      Include="..\..\src\EftSsNavi.App\EftSsNavi.App.csproj"
+      Condition="'$(BuildingSolutionFile)' == 'true'" />
+    <ProjectReference
+      Include="..\..\src\EftSsNavi.App\EftSsNavi.App.csproj"
+      Condition="'$(BuildingSolutionFile)' != 'true'"
+      AdditionalProperties="WindowsAppSDKSelfContained=true" />
   </ItemGroup>
 </Project>

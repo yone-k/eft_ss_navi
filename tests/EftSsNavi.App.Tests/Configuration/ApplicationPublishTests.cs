@@ -53,6 +53,7 @@ public sealed class ApplicationPublishTests
         startInfo.ArgumentList.Add("-p:Configuration=Release");
         startInfo.ArgumentList.Add("-p:Platform=x64");
         startInfo.ArgumentList.Add("-p:RuntimeIdentifier=win-x64");
+        startInfo.ArgumentList.Add($"-p:TargetDir={AppContext.BaseDirectory}");
         startInfo.ArgumentList.Add($"-p:PublishDir={publishDirectory}{Path.DirectorySeparatorChar}");
 
         Process? process = null;
