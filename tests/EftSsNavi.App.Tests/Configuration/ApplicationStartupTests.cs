@@ -38,6 +38,7 @@ public sealed class ApplicationStartupTests
         };
         startInfo.Environment["LOCALAPPDATA"] = profileDirectory;
         startInfo.Environment["USERPROFILE"] = profileDirectory;
+        startInfo.Environment["EFTSSNAVI_DISABLE_UPDATE_CHECK"] = "1";
 
         using var process = Process.Start(startInfo);
         Assert.NotNull(process);

@@ -10,6 +10,49 @@ public sealed class SettingsRepositoryTests
     private const string DefaultStunServer = "stun:stun.l.google.com:19302";
 
     [Fact]
+    public void ShouldRoundTripIgnoredUpdateVersionThroughSystemTextJson()
+    {
+        // Given: Settings that suppress one released application version.
+        var settings = new AppSettings(
+            @"C:\EFT\Screenshots",
+            [CreateProfile("Woods")],
+            "Woods",
+            ignoredUpdateVersion: "0.10.0");
+
+        // When: The settings are serialized and restored.
+        var restored = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(settings));
+
+        // Then: The version-specific suppression is retained.
+        Assert.NotNull(restored);
+        Assert.Equal("0.10.0", restored.IgnoredUpdateVersion);
+    }
+
+    [Fact]
+    public void ShouldRestoreNullIgnoredUpdateVersionFromLegacySettings()
+    {
+        // Given: A settings document written before update notifications existed.
+        var fileSystem = new FakeSettingsFileSystem();
+        fileSystem.SeedFile(
+            DestinationPath,
+            """
+            {
+              "WatchDirectory": null,
+              "MapProfiles": [],
+              "LastSelectedProfileName": null,
+              "BundledMapCatalogVersion": 0
+            }
+            """);
+        var repository = new SettingsRepository(fileSystem, DestinationPath);
+
+        // When: The legacy document is loaded.
+        var result = repository.Load();
+
+        // Then: Update notifications default to not being suppressed.
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value?.IgnoredUpdateVersion);
+    }
+
+    [Fact]
     public void ShouldRoundTripWorkerPartySettingsValuesThroughSystemTextJson()
     {
         // Given: Settings containing every persisted party configuration value.

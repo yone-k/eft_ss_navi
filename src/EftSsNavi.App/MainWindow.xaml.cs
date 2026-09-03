@@ -1,10 +1,12 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Reflection;
 using EftSsNavi.App.Controls;
 using EftSsNavi.App.Imaging;
 using EftSsNavi.App.Monitoring;
 using EftSsNavi.App.Pickers;
 using EftSsNavi.App.Presentation;
+using EftSsNavi.App.Updates;
 using EftSsNavi.Core.Calibration;
 using EftSsNavi.Core.Images;
 using EftSsNavi.Core.Monitoring;
@@ -28,6 +30,11 @@ namespace EftSsNavi.App;
 
 public sealed partial class MainWindow : Window
 {
+    private static readonly HttpClient UpdateHttpClient = new()
+    {
+        Timeout = TimeSpan.FromSeconds(5),
+    };
+
     private readonly MapCanvas MapControl;
     private readonly ObservableCollection<MapProfile> _profiles = [];
     private readonly IFilePickerService _pickerService = new FilePickerService();
@@ -40,6 +47,7 @@ public sealed partial class MainWindow : Window
     private readonly SettingsRepository _settingsRepository;
     private readonly string _settingsPath;
     private readonly DispatcherQueueTimer _partyRefreshTimer;
+    private readonly CancellationTokenSource _updateCheckCancellation = new();
     private IPartyCoordinator? _partyCoordinator;
     private PartyCoordinatorState _partyState = PartyCoordinatorState.Empty;
     private long _partyStateGeneration;
@@ -49,6 +57,7 @@ public sealed partial class MainWindow : Window
     private string? _partyDisplayName;
     private string? _signalingWorkerUrl;
     private IReadOnlyList<string> _stunServers = ["stun:stun.l.google.com:19302"];
+    private string? _ignoredUpdateVersion;
     private bool _partyCloseResumed;
     private bool _partyCloseInProgress;
     private bool _suppressNextSessionEnded;
@@ -103,6 +112,7 @@ public sealed partial class MainWindow : Window
 
         _initialized = true;
         await InitializeAsync();
+        _ = RunUpdateCheckAsync();
     }
 
     private async Task InitializeAsync()
@@ -149,6 +159,7 @@ public sealed partial class MainWindow : Window
         }
 
         _bundledMapCatalogVersion = settings?.BundledMapCatalogVersion ?? 0;
+        _ignoredUpdateVersion = settings?.IgnoredUpdateVersion;
         ConfigureParty(settings ?? new AppSettings(null, [], null));
 
         if (settings is not null)
@@ -1368,6 +1379,43 @@ public sealed partial class MainWindow : Window
 
     private void SetStatus(string message) => StatusText.Text = message;
 
+    private async Task RunUpdateCheckAsync()
+    {
+        var currentVersion = Assembly.GetEntryAssembly()?.GetName().Version;
+        if (currentVersion is null)
+        {
+            return;
+        }
+
+        var prompt = new WinUiUpdatePrompt(
+            () => _isClosed ? null : RootGrid.XamlRoot,
+            () => _isClosed);
+        var coordinator = new StartupUpdateCoordinator(
+            new UpdateCheckService(UpdateHttpClient),
+            prompt,
+            new ShellExternalLinkLauncher(),
+            new DelegateUpdateSuppressionStore(TrySaveIgnoredUpdateVersion));
+        await coordinator.RunAsync(
+            UpdateCheckPolicy.ShouldRun(
+                Environment.GetEnvironmentVariable("EFTSSNAVI_DISABLE_UPDATE_CHECK")),
+            currentVersion,
+            _ignoredUpdateVersion,
+            _updateCheckCancellation.Token);
+    }
+
+    private bool TrySaveIgnoredUpdateVersion(string normalizedVersion)
+    {
+        var previousVersion = _ignoredUpdateVersion;
+        _ignoredUpdateVersion = normalizedVersion;
+        if (PersistSettings() is null)
+        {
+            return true;
+        }
+
+        _ignoredUpdateVersion = previousVersion;
+        return false;
+    }
+
     private string? PersistSettings()
     {
         var selectedName = _selectedProfile?.DisplayName;
@@ -1378,7 +1426,8 @@ public sealed partial class MainWindow : Window
             _bundledMapCatalogVersion,
             _partyDisplayName,
             _signalingWorkerUrl,
-            _stunServers));
+            _stunServers,
+            _ignoredUpdateVersion));
         if (!result.IsSuccess)
         {
             var message = $"設定を保存できません。{result.ErrorMessage}";
@@ -1512,6 +1561,8 @@ public sealed partial class MainWindow : Window
     private void OnWindowClosed(object sender, WindowEventArgs args)
     {
         _isClosed = true;
+        _updateCheckCancellation.Cancel();
+        _updateCheckCancellation.Dispose();
         AppWindow.Closing -= OnAppWindowClosing;
         _partyRefreshTimer.Stop();
         _partyRefreshTimer.Tick -= OnPartyRefreshTimerTick;
