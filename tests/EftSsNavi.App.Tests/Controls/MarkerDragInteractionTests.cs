@@ -40,6 +40,19 @@ public sealed class MarkerDragInteractionTests
         Assert.False(interaction.IsDragging);
     }
 
+    [Theory]
+    [InlineData(0.5, 14)]
+    [InlineData(1, 15.4)]
+    [InlineData(1.5, 23.1)]
+    public void ShouldScaleHitRadiusWithoutGoingBelowExistingMinimum(
+        double displayScale,
+        double expectedRadius)
+    {
+        var radius = MapOverlayLayout.CalculateCursorHitRadius(displayScale);
+
+        Assert.Equal(expectedRadius, radius, 6);
+    }
+
     [Fact]
     public void ShouldRetainCompletedDropWhenPointerCaptureLossCancelsInteraction()
     {

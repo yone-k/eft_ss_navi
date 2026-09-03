@@ -18,15 +18,18 @@ public sealed class MapCanvas : Grid, IDisposable
     private const double ZoomStep = 1.15;
     private const double MinimumFitScaleFactor = 0.25;
     private const double MaximumFitScaleFactor = 32;
+    private const double FullContentPadding = 8;
     private readonly SKXamlCanvas Surface;
     private readonly CalibrationAnchorOverlay _calibrationAnchorOverlay = new();
     private readonly MapMarkerOverlay _mapMarkerOverlay = new();
     private readonly MarkerDragInteraction _markerDragInteraction = new();
+    private IReadOnlyList<AnchoredVisualBounds> _mapMarkerVisualBounds = [];
     private LoadedMapImage? _mapImage;
     private MapImageRotation _imageRotation = new(0);
     private ViewportTransform? _viewport;
     private PixelPoint? _markerPosition;
     private PixelPoint? _markerDirection;
+    private double? _fittedMapOverlayScale;
     private Point _pointerPressedAt;
     private Point _previousPointerPosition;
     private int? _pressedCalibrationAnchorIndex;
@@ -92,6 +95,7 @@ public sealed class MapCanvas : Grid, IDisposable
 
         var previous = _mapImage;
         _mapImage = image;
+        RefreshMapMarkerVisualBounds();
         FitToView();
         previous?.Dispose();
     }
@@ -106,6 +110,7 @@ public sealed class MapCanvas : Grid, IDisposable
         }
 
         _imageRotation = rotation;
+        RefreshMapMarkerVisualBounds();
         FitToView();
     }
 
@@ -121,6 +126,8 @@ public sealed class MapCanvas : Grid, IDisposable
         AffineTransform2D transform)
     {
         _mapMarkerOverlay.Set(markers, transform);
+        RefreshMapMarkerVisualBounds();
+        _fittedMapOverlayScale = null;
         Surface.Invalidate();
     }
 
@@ -147,9 +154,26 @@ public sealed class MapCanvas : Grid, IDisposable
             return;
         }
 
-        _viewport = ViewportTransform.Fit(
-            _imageRotation.GetDisplaySize(GetImageSize()),
-            new Size2D(Surface.ActualWidth, Surface.ActualHeight));
+        var viewSize = GetViewSize();
+        var displaySize = _imageRotation.GetDisplaySize(GetImageSize());
+        if (_mapMarkerOverlay.Markers.Count == 0)
+        {
+            _fittedMapOverlayScale = null;
+            _viewport = ViewportTransform.Fit(displaySize, viewSize);
+        }
+        else if (viewSize.Width > FullContentPadding * 2
+                 && viewSize.Height > FullContentPadding * 2)
+        {
+            var fit = MapContentViewportFitter.Fit(
+                displaySize,
+                viewSize,
+                _mapMarkerVisualBounds,
+                MapOverlayLayout.CalculateNormalScale(viewSize),
+                FullContentPadding);
+            _viewport = fit.Viewport;
+            _fittedMapOverlayScale = fit.OverlayScale;
+        }
+
         Surface.Invalidate();
     }
 
@@ -237,9 +261,11 @@ public sealed class MapCanvas : Grid, IDisposable
         PixelPoint? displayDirection = _markerDirection is { } direction
             ? _imageRotation.DirectionToDisplay(direction)
             : null;
+        var displayScale = GetNormalOverlayScale();
         var cursor = NavigationCursorGeometry.Create(
             new PixelPoint(center.X, center.Y),
-            displayDirection);
+            displayDirection,
+            displayScale);
 
         using var pathBuilder = new SKPathBuilder();
         pathBuilder.MoveTo(ToSkPoint(cursor.Tip));
@@ -255,7 +281,7 @@ public sealed class MapCanvas : Grid, IDisposable
             Color = SKColors.White,
             Style = SKPaintStyle.Stroke,
             StrokeJoin = SKStrokeJoin.Round,
-            StrokeWidth = NavigationCursorGeometry.OutlineStrokeWidth,
+            StrokeWidth = NavigationCursorGeometry.GetOutlineStrokeWidth(displayScale),
         };
         using var markerPaint = new SKPaint
         {
@@ -277,12 +303,13 @@ public sealed class MapCanvas : Grid, IDisposable
             return;
         }
 
+        var metrics = MapOverlayLayout.CreateMarkerMetrics(GetMapOverlayScale());
         using var darkOutline = new SKPaint
         {
             IsAntialias = true,
             Color = new SKColor(20, 20, 20, 230),
             Style = SKPaintStyle.Stroke,
-            StrokeWidth = 1.5f,
+            StrokeWidth = (float)metrics.DarkOutlineWidth,
         };
         using var pmcExtractPaint = new SKPaint
         {
@@ -319,7 +346,7 @@ public sealed class MapCanvas : Grid, IDisposable
             IsAntialias = true,
             Color = SKColors.White,
             Style = SKPaintStyle.Stroke,
-            StrokeWidth = 1.6f,
+            StrokeWidth = (float)metrics.IconStrokeWidth,
             StrokeCap = SKStrokeCap.Round,
             StrokeJoin = SKStrokeJoin.Round,
         };
@@ -328,7 +355,7 @@ public sealed class MapCanvas : Grid, IDisposable
             IsAntialias = true,
             Color = new SKColor(15, 15, 15, 235),
             Style = SKPaintStyle.Stroke,
-            StrokeWidth = 3,
+            StrokeWidth = (float)metrics.LabelOutlineWidth,
             StrokeJoin = SKStrokeJoin.Round,
         };
         using var labelFill = new SKPaint
@@ -338,14 +365,13 @@ public sealed class MapCanvas : Grid, IDisposable
             Style = SKPaintStyle.Fill,
         };
         using var typeface = SKTypeface.FromFamilyName(null, SKFontStyle.Bold);
-        using var labelFont = new SKFont(typeface, 12);
+        using var labelFont = new SKFont(typeface, (float)metrics.LabelFontSize);
 
-        foreach (var marker in _mapMarkerOverlay.Markers)
+        for (var index = 0; index < _mapMarkerOverlay.Markers.Count; index++)
         {
+            var marker = _mapMarkerOverlay.Markers[index];
             var viewPosition = ImageToView(marker.Position);
-            if (viewPosition.X < -100 || viewPosition.Y < -30 ||
-                viewPosition.X > Surface.ActualWidth + 100 ||
-                viewPosition.Y > Surface.ActualHeight + 30)
+            if (!IntersectsView(_mapMarkerVisualBounds[index], viewPosition, metrics.Scale))
             {
                 continue;
             }
@@ -353,7 +379,7 @@ public sealed class MapCanvas : Grid, IDisposable
             var center = new SKPoint((float)viewPosition.X, (float)viewPosition.Y);
             if (marker.Kind == MapMarkerKind.PmcSpawn)
             {
-                DrawPmcSpawnIcon(canvas, center, spawnPaint, darkOutline);
+                DrawPmcSpawnIcon(canvas, center, spawnPaint, darkOutline, metrics);
                 continue;
             }
 
@@ -364,11 +390,13 @@ public sealed class MapCanvas : Grid, IDisposable
                 MapMarkerKind.Transit => transitPaint,
                 _ => pmcExtractPaint,
             };
-            DrawExtractIcon(canvas, center, extractPaint, darkOutline, iconPaint);
+            DrawExtractIcon(canvas, center, extractPaint, darkOutline, iconPaint, metrics);
             if (!string.IsNullOrWhiteSpace(marker.Name))
             {
-                canvas.DrawText(marker.Name, center.X + 11, center.Y + 4, SKTextAlign.Left, labelFont, labelOutline);
-                canvas.DrawText(marker.Name, center.X + 11, center.Y + 4, SKTextAlign.Left, labelFont, labelFill);
+                var labelX = center.X + (float)metrics.LabelOffsetX;
+                var labelY = center.Y + (float)metrics.LabelBaselineOffsetY;
+                canvas.DrawText(marker.Name, labelX, labelY, SKTextAlign.Left, labelFont, labelOutline);
+                canvas.DrawText(marker.Name, labelX, labelY, SKTextAlign.Left, labelFont, labelFill);
             }
         }
     }
@@ -377,13 +405,15 @@ public sealed class MapCanvas : Grid, IDisposable
         SKCanvas canvas,
         SKPoint center,
         SKPaint fill,
-        SKPaint outline)
+        SKPaint outline,
+        MapMarkerMetrics metrics)
     {
+        var radius = (float)metrics.SpawnRadius;
         using var pathBuilder = new SKPathBuilder();
-        pathBuilder.MoveTo(center.X, center.Y - 5);
-        pathBuilder.LineTo(center.X + 5, center.Y);
-        pathBuilder.LineTo(center.X, center.Y + 5);
-        pathBuilder.LineTo(center.X - 5, center.Y);
+        pathBuilder.MoveTo(center.X, center.Y - radius);
+        pathBuilder.LineTo(center.X + radius, center.Y);
+        pathBuilder.LineTo(center.X, center.Y + radius);
+        pathBuilder.LineTo(center.X - radius, center.Y);
         pathBuilder.Close();
         using var path = pathBuilder.Detach();
         canvas.DrawPath(path, fill);
@@ -395,14 +425,96 @@ public sealed class MapCanvas : Grid, IDisposable
         SKPoint center,
         SKPaint fill,
         SKPaint outline,
-        SKPaint icon)
+        SKPaint icon,
+        MapMarkerMetrics metrics)
     {
-        canvas.DrawCircle(center, 7.5f, fill);
-        canvas.DrawCircle(center, 7.5f, outline);
-        canvas.DrawLine(center.X - 3.5f, center.Y, center.X + 3.5f, center.Y, icon);
-        canvas.DrawLine(center.X + 3.5f, center.Y, center.X + 1, center.Y - 2.5f, icon);
-        canvas.DrawLine(center.X + 3.5f, center.Y, center.X + 1, center.Y + 2.5f, icon);
+        var radius = (float)metrics.ExtractRadius;
+        var halfLine = 3.5f * (float)metrics.Scale;
+        var arrowInset = 1f * (float)metrics.Scale;
+        var arrowHalfHeight = 2.5f * (float)metrics.Scale;
+        canvas.DrawCircle(center, radius, fill);
+        canvas.DrawCircle(center, radius, outline);
+        canvas.DrawLine(center.X - halfLine, center.Y, center.X + halfLine, center.Y, icon);
+        canvas.DrawLine(center.X + halfLine, center.Y, center.X + arrowInset, center.Y - arrowHalfHeight, icon);
+        canvas.DrawLine(center.X + halfLine, center.Y, center.X + arrowInset, center.Y + arrowHalfHeight, icon);
     }
+
+    private void RefreshMapMarkerVisualBounds()
+    {
+        if (_mapImage is null)
+        {
+            _mapMarkerVisualBounds = [];
+            return;
+        }
+
+        var metrics = MapOverlayLayout.CreateMarkerMetrics(1);
+        using var typeface = SKTypeface.FromFamilyName(null, SKFontStyle.Bold);
+        using var font = new SKFont(typeface, (float)metrics.LabelFontSize);
+        var imageSize = GetImageSize();
+        var result = new AnchoredVisualBounds[_mapMarkerOverlay.Markers.Count];
+        for (var index = 0; index < _mapMarkerOverlay.Markers.Count; index++)
+        {
+            var marker = _mapMarkerOverlay.Markers[index];
+            var outlineHalfWidth = metrics.DarkOutlineWidth / 2;
+            var iconExtent = (marker.Kind == MapMarkerKind.PmcSpawn
+                ? metrics.SpawnRadius
+                : metrics.ExtractRadius) + outlineHalfWidth;
+            var left = -iconExtent;
+            var top = -iconExtent;
+            var right = iconExtent;
+            var bottom = iconExtent;
+
+            if (!string.IsNullOrWhiteSpace(marker.Name))
+            {
+                _ = font.MeasureText(marker.Name, out var textBounds);
+                var labelOutlineHalfWidth = metrics.LabelOutlineWidth / 2;
+                left = Math.Min(
+                    left,
+                    metrics.LabelOffsetX + textBounds.Left - labelOutlineHalfWidth);
+                top = Math.Min(
+                    top,
+                    metrics.LabelBaselineOffsetY + textBounds.Top - labelOutlineHalfWidth);
+                right = Math.Max(
+                    right,
+                    metrics.LabelOffsetX + textBounds.Right + labelOutlineHalfWidth);
+                bottom = Math.Max(
+                    bottom,
+                    metrics.LabelBaselineOffsetY + textBounds.Bottom + labelOutlineHalfWidth);
+            }
+
+            result[index] = new AnchoredVisualBounds(
+                _imageRotation.ImageToDisplay(marker.Position, imageSize),
+                left,
+                top,
+                right,
+                bottom);
+        }
+
+        _mapMarkerVisualBounds = result;
+    }
+
+    private bool IntersectsView(
+        AnchoredVisualBounds bounds,
+        PixelPoint viewAnchor,
+        double overlayScale)
+    {
+        var left = viewAnchor.X + (bounds.Left * overlayScale);
+        var top = viewAnchor.Y + (bounds.Top * overlayScale);
+        var right = viewAnchor.X + (bounds.Right * overlayScale);
+        var bottom = viewAnchor.Y + (bounds.Bottom * overlayScale);
+        return right >= 0
+            && bottom >= 0
+            && left <= Surface.ActualWidth
+            && top <= Surface.ActualHeight;
+    }
+
+    private Size2D GetViewSize() => new(Surface.ActualWidth, Surface.ActualHeight);
+
+    private double GetNormalOverlayScale() =>
+        MapOverlayLayout.CalculateNormalScale(GetViewSize());
+
+    private double GetMapOverlayScale() =>
+        _fittedMapOverlayScale ?? GetNormalOverlayScale();
 
     private void DrawCalibrationAnchors(SKCanvas canvas)
     {
@@ -505,7 +617,8 @@ public sealed class MapCanvas : Grid, IDisposable
             var markerView = ImageToView(markerPosition);
             if (_markerDragInteraction.TryBegin(
                 new PixelPoint(point.Position.X, point.Position.Y),
-                markerView))
+                markerView,
+                MapOverlayLayout.CalculateCursorHitRadius(GetNormalOverlayScale())))
             {
                 e.Handled = Surface.CapturePointer(e.Pointer);
                 if (!e.Handled)
@@ -642,6 +755,7 @@ public sealed class MapCanvas : Grid, IDisposable
 
     private void OnSurfaceSizeChanged(object sender, SizeChangedEventArgs e)
     {
+        _fittedMapOverlayScale = null;
         if (_viewport is null && _mapImage is not null)
         {
             FitToView();

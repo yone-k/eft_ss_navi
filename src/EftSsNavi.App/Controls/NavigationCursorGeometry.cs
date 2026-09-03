@@ -4,15 +4,19 @@ namespace EftSsNavi.App.Controls;
 
 public static class NavigationCursorGeometry
 {
-    public const float OutlineStrokeWidth = 1.2f;
+    private const float OutlineStrokeWidth = 1.2f;
 
     private const double TipDistance = 14;
     private const double RearDistance = 7;
     private const double HalfWidth = 6.5;
     private const double NotchDistance = -1.75;
 
-    public static NavigationCursorPoints Create(PixelPoint center, PixelPoint? direction)
+    public static NavigationCursorPoints Create(
+        PixelPoint center,
+        PixelPoint? direction,
+        double displayScale = 1)
     {
+        var cursorScale = MapOverlayLayout.CalculateCursorScale(displayScale);
         var directionX = direction?.X ?? 0;
         var directionY = direction?.Y ?? -1;
         var length = Math.Sqrt((directionX * directionX) + (directionY * directionY));
@@ -29,11 +33,28 @@ public static class NavigationCursorGeometry
         var perpendicularY = directionX;
 
         return new NavigationCursorPoints(
-            PointAlong(center, directionX, directionY, TipDistance),
-            OffsetRear(center, directionX, directionY, perpendicularX, perpendicularY, HalfWidth),
-            PointAlong(center, directionX, directionY, NotchDistance),
-            OffsetRear(center, directionX, directionY, perpendicularX, perpendicularY, -HalfWidth));
+            PointAlong(center, directionX, directionY, TipDistance * cursorScale),
+            OffsetRear(
+                center,
+                directionX,
+                directionY,
+                perpendicularX,
+                perpendicularY,
+                HalfWidth * cursorScale,
+                RearDistance * cursorScale),
+            PointAlong(center, directionX, directionY, NotchDistance * cursorScale),
+            OffsetRear(
+                center,
+                directionX,
+                directionY,
+                perpendicularX,
+                perpendicularY,
+                -HalfWidth * cursorScale,
+                RearDistance * cursorScale));
     }
+
+    public static float GetOutlineStrokeWidth(double displayScale) =>
+        OutlineStrokeWidth * (float)MapOverlayLayout.CalculateCursorScale(displayScale);
 
     private static PixelPoint PointAlong(
         PixelPoint center,
@@ -49,9 +70,10 @@ public static class NavigationCursorGeometry
         double directionY,
         double perpendicularX,
         double perpendicularY,
-        double perpendicularDistance) => new(
-            center.X - (directionX * RearDistance) + (perpendicularX * perpendicularDistance),
-            center.Y - (directionY * RearDistance) + (perpendicularY * perpendicularDistance));
+        double perpendicularDistance,
+        double rearDistance) => new(
+            center.X - (directionX * rearDistance) + (perpendicularX * perpendicularDistance),
+            center.Y - (directionY * rearDistance) + (perpendicularY * perpendicularDistance));
 }
 
 public readonly record struct NavigationCursorPoints(
