@@ -1,0 +1,98 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  release:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Derive version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $version = '${{ github.ref_name }}' -replace '^v', ''
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Restore application
+        run: dotnet restore src/EftSsMap.App/EftSsMap.App.csproj -r win-x64
+
+      - name: Publish application
+        run: dotnet publish src/EftSsMap.App/EftSsMap.App.csproj -c Release -r win-x64 --no-restore -o publish -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Validate publish output
+        shell: pwsh
+        run: |
+          $requiredFiles = @(
+            'publish/EftSsMap.App.exe'
+            'publish/THIRD-PARTY-NOTICES.md'
+            'publish/Assets/Maps/catalog.json'
+          )
+
+          foreach ($file in $requiredFiles) {
+            if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
+              Write-Error "Required publish output is missing: $file"
+              exit 1
+            }
+          }
+
+          $symbols = Get-ChildItem -LiteralPath publish -Filter '*.pdb' -Recurse -File
+          if ($symbols) {
+            Write-Error "Publish output contains PDB files: $($symbols.FullName -join ', ')"
+            exit 1
+          }
+
+      - name: Create release archive
+        shell: pwsh
+        run: Compress-Archive -Path publish/* -DestinationPath EftSsMap-${{ github.ref_name }}-win-x64.zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: EftSsMap-${{ github.ref_name }}-win-x64.zip
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          body: |
+            ## 動作環境
+
+            - Windows 11 x64
+            - [.NET 10 Runtime（x64）](https://dotnet.microsoft.com/download/dotnet/10.0)
+            - [Windows App SDK Runtime 2.4（x64）](https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads)
+            - [Microsoft Visual C++ Redistributable（x64）](https://aka.ms/vs/17/release/vc_redist.x64.exe)
+
+            ## インストールと起動
+
+            1. 必要なランタイムをインストールします。
+            2. 配布ZIPをダウンロードして展開します。
+            3. `EftSsMap.App.exe`を起動します。
+
+            アプリ本体だけを別の場所へ移動せず、展開したファイル一式を同じフォルダーに置いたまま起動してください。
+          draft: false
+          prerelease: false
