@@ -1,5 +1,7 @@
 # EFT Screenshot Map
 
+[![CI](https://github.com/yone-k/eft_ss_map/actions/workflows/ci.yml/badge.svg)](https://github.com/yone-k/eft_ss_map/actions/workflows/ci.yml)
+
 Escape from Tarkov（EFT）が生成するスクリーンショットの**ファイル名**から現在座標とカメラ方向を読み取り、マップ上へ最新位置を表示するWindowsアプリです。
 
 スクリーンショット画像の内容、ゲームプロセス、ゲームメモリ、入力、ネットワークにはアクセスしません。
