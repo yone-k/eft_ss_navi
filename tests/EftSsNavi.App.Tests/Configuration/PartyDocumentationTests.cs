@@ -3,22 +3,19 @@ namespace EftSsNavi.App.Tests.Configuration;
 public sealed class PartyDocumentationTests
 {
     [Fact]
-    public void ShouldDocumentPartyUsagePrivacyAndNetworkLimitations()
+    public void ShouldDocumentGroupUsagePrivacyAndTroubleshooting()
     {
         var readme = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "README.md"));
 
         Assert.Contains("グループで位置を共有する", readme, StringComparison.Ordinal);
+        Assert.Contains("### ホスト", readme, StringComparison.Ordinal);
+        Assert.Contains("### 参加者", readme, StringComparison.Ordinal);
+        Assert.Contains("Windows Defender ファイアウォール", readme, StringComparison.Ordinal);
+        Assert.Contains("直接接続できない場合があります", readme, StringComparison.Ordinal);
+        Assert.Contains("表示名、選択中のマップ、現在位置と向き", readme, StringComparison.Ordinal);
+        Assert.Contains("スクリーンショット画像の内容", readme, StringComparison.Ordinal);
+        Assert.Contains("ルームコードを知っている人", readme, StringComparison.Ordinal);
         Assert.DoesNotContain("パーティ", readme, StringComparison.Ordinal);
-        Assert.Contains("Cloudflare", readme, StringComparison.Ordinal);
-        Assert.Contains("STUN", readme, StringComparison.Ordinal);
-        Assert.Contains("位置データはシグナリングサーバーを通", readme, StringComparison.Ordinal);
-        Assert.Contains("ルームコードを知っている", readme, StringComparison.Ordinal);
-        Assert.Contains("IP候補", readme, StringComparison.Ordinal);
-        Assert.Contains("接続元IPアドレス", readme, StringComparison.Ordinal);
-        Assert.Contains("SignalingWorkerUrl", readme, StringComparison.Ordinal);
-        Assert.Contains("シンメトリックNAT", readme, StringComparison.Ordinal);
-        Assert.Contains("スクリーンショット画像", readme, StringComparison.Ordinal);
-        Assert.Contains("クォータニオン", readme, StringComparison.Ordinal);
         Assert.DoesNotContain("HiveMQ", readme, StringComparison.Ordinal);
         Assert.DoesNotContain("MQTT", readme, StringComparison.Ordinal);
     }
@@ -64,7 +61,7 @@ public sealed class PartyDocumentationTests
         var readme = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "README.md"));
 
         Assert.DoesNotContain("ネットワークにはアクセスしません。", readme, StringComparison.Ordinal);
-        Assert.Contains("グループに未参加の間はネットワーク通信を行いません", readme, StringComparison.Ordinal);
+        Assert.Contains("グループに参加していない間は、グループ共有のための通信を行いません", readme, StringComparison.Ordinal);
     }
 
     [Fact]
