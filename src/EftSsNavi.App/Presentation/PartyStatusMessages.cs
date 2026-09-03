@@ -26,9 +26,9 @@ public static class PartyStatusMessages
 
     public static string ForRejection(RejectReason reason) => reason switch
     {
-        RejectReason.Full => "パーティが満員です。",
+        RejectReason.Full => "グループが満員です。",
         RejectReason.VersionMismatch => "ホストとアプリのバージョンが異なります。",
-        _ => "パーティへの参加が拒否されました。",
+        _ => "グループへの参加が拒否されました。",
     };
 
     public static string? ForMembershipChange(

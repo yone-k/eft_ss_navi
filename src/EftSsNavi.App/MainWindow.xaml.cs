@@ -772,7 +772,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception exception)
         {
-            EnqueueOnUi(() => SetStatus($"位置をパーティへ送信できません。{exception.Message}"));
+            EnqueueOnUi(() => SetStatus($"位置をグループへ送信できません。{exception.Message}"));
         }
     }
 
@@ -811,7 +811,7 @@ public sealed partial class MainWindow : Window
                     displayName,
                     _selectedProfile?.DisplayName,
                     cancellationToken));
-            SetStatus("パーティを開始しました。");
+            SetStatus("グループを開始しました。");
         }
         catch (OperationCanceledException) when (_partyCloseInProgress)
         {
@@ -827,7 +827,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception exception)
         {
-            SetStatus($"パーティを開始できません。{exception.Message}");
+            SetStatus($"グループを開始できません。{exception.Message}");
         }
         finally
         {
@@ -885,7 +885,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception exception)
         {
-            SetStatus($"パーティに参加できません。{exception.Message}");
+            SetStatus($"グループに参加できません。{exception.Message}");
         }
         finally
         {
@@ -957,12 +957,12 @@ public sealed partial class MainWindow : Window
         try
         {
             await _partyCoordinator.LeaveAsync();
-            SetStatus("パーティから退出しました。");
+            SetStatus("グループから退出しました。");
         }
         catch (Exception exception)
         {
             _suppressNextSessionEnded = false;
-            SetStatus($"パーティから退出できません。{exception.Message}");
+            SetStatus($"グループから退出できません。{exception.Message}");
         }
     }
 
@@ -1012,7 +1012,7 @@ public sealed partial class MainWindow : Window
         var hasMatchingProfile = state.MapName is not null
             && _profiles.Any(profile => NamesEqual(profile.DisplayName, state.MapName));
         var mapStatus = PartyStatusMessagesForMap(state.MapName, hasMatchingProfile);
-        SetStatus(string.IsNullOrEmpty(mapStatus) ? "パーティに参加しました。" : mapStatus);
+        SetStatus(string.IsNullOrEmpty(mapStatus) ? "グループに参加しました。" : mapStatus);
     }
 
     private void OnPartyStateChanged(PartyCoordinatorState state)
@@ -1118,9 +1118,7 @@ public sealed partial class MainWindow : Window
         PartySelfParticipantRow.Visibility = state.Role == PartyUiRole.NotJoined
             ? Visibility.Collapsed
             : Visibility.Visible;
-        PartyRoomCodeText.Visibility = state.Role == PartyUiRole.Host
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        PartySectionTitleText.Text = state.GroupSectionTitle;
         if (!state.PartyMarkersVisible)
         {
             MapControl.SetPartyMarkers([]);
@@ -1142,7 +1140,6 @@ public sealed partial class MainWindow : Window
 
         var formattedRoomCode = state.RoomCode is { } roomCode ? RoomCode.Format(roomCode) : null;
         PartyFlyoutRoomCodeText.Text = formattedRoomCode ?? "-------------------";
-        PartyRoomCodeText.Text = $"ルームコード: {formattedRoomCode ?? "—"}";
         PartySelfDisplayNameText.Text = state.LocalDisplayName ?? "自分";
         PartySelfStatusText.Text = "接続中";
 
@@ -1173,13 +1170,22 @@ public sealed partial class MainWindow : Window
             age,
             participant.LatestPosition?.MapName);
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        row.Children.Add(new Ellipse
+        var markerSlot = new Canvas
+        {
+            Width = 24,
+            Height = 20,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var marker = new Ellipse
         {
             Width = 12,
             Height = 12,
-            VerticalAlignment = VerticalAlignment.Center,
             Fill = new SolidColorBrush(PartyColor(participant.ColorIndex)),
-        });
+        };
+        Canvas.SetLeft(marker, 6);
+        Canvas.SetTop(marker, 4);
+        markerSlot.Children.Add(marker);
+        row.Children.Add(markerSlot);
         row.Children.Add(new TextBlock
         {
             Text = participant.DisplayName,
@@ -1270,7 +1276,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception exception)
         {
-            SetStatus($"パーティのマップを変更できません。{exception.Message}");
+            SetStatus($"グループのマップを変更できません。{exception.Message}");
         }
     }
 

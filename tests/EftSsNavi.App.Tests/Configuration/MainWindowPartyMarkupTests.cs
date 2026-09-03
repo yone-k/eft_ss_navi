@@ -17,7 +17,7 @@ public sealed class MainWindowPartyMarkupTests
 
         // Then: A clearly named button opens the party UI.
         Assert.Equal("Button", button.Name.LocalName);
-        Assert.Equal("パーティ", (string?)button.Attribute("Content"));
+        Assert.Equal("グループ", (string?)button.Attribute("Content"));
         Assert.Equal("OnPartyClick", (string?)button.Attribute("Click"));
     }
 
@@ -92,25 +92,28 @@ public sealed class MainWindowPartyMarkupTests
 
         // When: The persistent party summary is located.
         var section = FindNamedElement(document, "PartySection");
+        var title = FindNamedElement(document, "PartySectionTitleText");
         var list = FindNamedElement(document, "PartyParticipantList");
 
         // Then: Current party membership is visible outside the flyout.
         Assert.Equal("StackPanel", section.Name.LocalName);
+        Assert.Equal("グループ", (string?)title.Attribute("Text"));
         Assert.Equal("ItemsControl", list.Name.LocalName);
-        Assert.Contains(section.Descendants(), element => (string?)element.Attribute("Text") == "パーティ");
     }
 
     [Fact]
-    public void ShouldExposePersistentRoomCodeForHost()
+    public void ShouldKeepRoomCodeOnlyInsideFlyout()
     {
-        // Given: The main-window party section.
+        // Given: The main-window party UI.
         var document = LoadMarkup();
 
-        // When: The host room-code display is located.
-        var roomCode = FindNamedElement(document, "PartyRoomCodeText");
+        // When: Room-code displays are located.
+        var flyoutRoomCode = FindNamedElement(document, "PartyFlyoutRoomCodeText");
 
-        // Then: The active code has a persistent text target outside transient status messages.
-        Assert.Equal("TextBlock", roomCode.Name.LocalName);
+        // Then: The code remains available in the flyout but not in the right sidebar.
+        Assert.Equal("TextBlock", flyoutRoomCode.Name.LocalName);
+        Assert.DoesNotContain(document.Descendants(), element =>
+            (string?)element.Attribute(Xaml + "Name") == "PartyRoomCodeText");
     }
 
     [Fact]
@@ -159,6 +162,22 @@ public sealed class MainWindowPartyMarkupTests
 
         Assert.Contains("PartySelfDisplayNameText", directTextBlocks);
         Assert.Contains("PartySelfStatusText", directTextBlocks);
+    }
+
+    [Fact]
+    public void ShouldCenterLocalParticipantMarkerInConsistentSlot()
+    {
+        var document = LoadMarkup();
+
+        var selfRow = FindNamedElement(document, "PartySelfParticipantRow");
+        var markerSlot = selfRow.Elements().Single(element => element.Name.LocalName == "Canvas");
+        var marker = markerSlot.Elements().Single(element => element.Name.LocalName == "Ellipse");
+
+        Assert.Equal("24", (string?)markerSlot.Attribute("Width"));
+        Assert.Equal("20", (string?)markerSlot.Attribute("Height"));
+        Assert.Equal("Center", (string?)markerSlot.Attribute("VerticalAlignment"));
+        Assert.Equal("6", (string?)marker.Attribute("Canvas.Left"));
+        Assert.Equal("4", (string?)marker.Attribute("Canvas.Top"));
     }
 
     [Fact]

@@ -112,6 +112,22 @@ public sealed class WebRtcPeerTransportTests
     }
 
     [Fact]
+    public async Task ShouldNotMissIceCompletionBeforeWaitSubscription()
+    {
+        // Given: ICE gathering completes while the data channel is being created,
+        // before the transport subscribes to the one-shot completion event.
+        var factory = new RecordingPeerFactory();
+        factory.Peer.CompleteIceWhenDataChannelCreated = true;
+        using var transport = CreateTransport(factory, TimeSpan.FromMilliseconds(100));
+
+        // When: The offer is created after ICE has already completed.
+        var offer = await transport.CreateOfferAsync(CancellationToken.None);
+
+        // Then: The current ICE state prevents waiting forever for an event that already fired.
+        Assert.Equal("initial-local-sdp", offer);
+    }
+
+    [Fact]
     public async Task ShouldApplyRemoteOfferBeforeCreatingAndGatheringAnswer()
     {
         // Given: A host-side transport and a remote offer.
@@ -449,9 +465,13 @@ public sealed class WebRtcPeerTransportTests
 
         public bool BlockSetLocalDescription { get; init; }
 
+        public bool CompleteIceWhenDataChannelCreated { get; set; }
+
         public bool IsDataChannelOpen { get; set; } = true;
 
         public bool IsDisconnected { get; private set; }
+
+        public bool IsIceGatheringComplete { get; private set; }
 
         public string LocalDescriptionSdp { get; set; } = "initial-local-sdp";
 
@@ -461,6 +481,11 @@ public sealed class WebRtcPeerTransportTests
         {
             Calls.Add("CreateDataChannel");
             DataChannelRequests.Add((label, ordered, reliable));
+            if (CompleteIceWhenDataChannelCreated)
+            {
+                CompleteIceGathering();
+            }
+
             return Task.CompletedTask;
         }
 
@@ -500,7 +525,11 @@ public sealed class WebRtcPeerTransportTests
             return Task.CompletedTask;
         }
 
-        public void CompleteIceGathering() => IceGatheringCompleted?.Invoke();
+        public void CompleteIceGathering()
+        {
+            IsIceGatheringComplete = true;
+            IceGatheringCompleted?.Invoke();
+        }
 
         public void Receive(string message) => MessageReceived?.Invoke(message);
 

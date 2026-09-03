@@ -7,7 +7,8 @@ public sealed class PartyDocumentationTests
     {
         var readme = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "README.md"));
 
-        Assert.Contains("パーティで位置を共有する", readme, StringComparison.Ordinal);
+        Assert.Contains("グループで位置を共有する", readme, StringComparison.Ordinal);
+        Assert.DoesNotContain("パーティ", readme, StringComparison.Ordinal);
         Assert.Contains("Cloudflare", readme, StringComparison.Ordinal);
         Assert.Contains("STUN", readme, StringComparison.Ordinal);
         Assert.Contains("位置データはシグナリングサーバーを通", readme, StringComparison.Ordinal);
@@ -63,7 +64,7 @@ public sealed class PartyDocumentationTests
         var readme = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "README.md"));
 
         Assert.DoesNotContain("ネットワークにはアクセスしません。", readme, StringComparison.Ordinal);
-        Assert.Contains("パーティに未参加の間はネットワーク通信を行いません", readme, StringComparison.Ordinal);
+        Assert.Contains("グループに未参加の間はネットワーク通信を行いません", readme, StringComparison.Ordinal);
     }
 
     [Fact]

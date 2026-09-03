@@ -8,6 +8,22 @@ namespace EftSsNavi.App.Tests.Configuration;
 
 public sealed class MainWindowPartyIntegrationTests
 {
+    [Theory]
+    [InlineData(PartyUiRole.NotJoined, "グループ")]
+    [InlineData(PartyUiRole.Participant, "グループ")]
+    [InlineData(PartyUiRole.Host, "グループ (ホスト中)")]
+    public void ShouldDescribeGroupSectionTitleForCurrentRole(PartyUiRole role, string expected)
+    {
+        // Given: A group UI state for the current role.
+        var state = new PartyUiState(role, hostMapName: null, hasMatchingProfile: false);
+
+        // When: The right-sidebar heading is resolved.
+        var title = state.GroupSectionTitle;
+
+        // Then: Only the host heading exposes its host status.
+        Assert.Equal(expected, title);
+    }
+
     [Fact]
     public void ShouldDisableMapActionsWhenJoinedAsParticipant()
     {
@@ -182,6 +198,20 @@ public sealed class MainWindowPartyIntegrationTests
     }
 
     [Fact]
+    public void ShouldCenterRemoteParticipantMarkerInSameSlotAsLocalParticipant()
+    {
+        var source = LoadMainWindowSource();
+        var method = ExtractMethod(source, "private StackPanel CreateParticipantRow");
+
+        Assert.Contains("var markerSlot = new Canvas", method, StringComparison.Ordinal);
+        Assert.Contains("Width = 24", method, StringComparison.Ordinal);
+        Assert.Contains("Height = 20", method, StringComparison.Ordinal);
+        Assert.Contains("VerticalAlignment = VerticalAlignment.Center", method, StringComparison.Ordinal);
+        Assert.Contains("Canvas.SetLeft(marker, 6)", method, StringComparison.Ordinal);
+        Assert.Contains("Canvas.SetTop(marker, 4)", method, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ShouldApplyPartyMapAvailabilityToActualToolbarButtons()
     {
         // Given: MainWindow applies a pure PartyUiState snapshot.
@@ -195,6 +225,16 @@ public sealed class MainWindowPartyIntegrationTests
         Assert.Contains("NewProfileButton.IsEnabled", method, StringComparison.Ordinal);
         Assert.Contains("DeleteProfileButton.IsEnabled", method, StringComparison.Ordinal);
         Assert.Contains("MapActionsEnabled", method, StringComparison.Ordinal);
+        Assert.Contains("PartySectionTitleText.Text", method, StringComparison.Ordinal);
+        Assert.Contains("GroupSectionTitle", method, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ShouldUseGroupTermInMainWindowUserFacingMessages()
+    {
+        var source = LoadMainWindowSource();
+
+        Assert.DoesNotContain("パーティ", source, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -422,7 +462,7 @@ public sealed class MainWindowPartyIntegrationTests
         var handler = ExtractMethod(source, "private async void OnJoinPartyClick");
 
         Assert.Contains("ApplyJoinCompletionStatus", handler, StringComparison.Ordinal);
-        Assert.DoesNotContain("SetStatus(\"パーティに参加しました。\")", handler, StringComparison.Ordinal);
+        Assert.DoesNotContain("SetStatus(\"グループに参加しました。\")", handler, StringComparison.Ordinal);
     }
 
     [Fact]

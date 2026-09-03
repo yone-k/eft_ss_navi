@@ -19,6 +19,8 @@ internal interface IWebRtcPeer : IDisposable
 
     bool IsDisconnected { get; }
 
+    bool IsIceGatheringComplete { get; }
+
     string LocalDescriptionSdp { get; }
 
     Task CreateDataChannelAsync(

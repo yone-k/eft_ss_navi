@@ -160,6 +160,11 @@ public sealed class WebRtcPeerTransport : IPeerTransport
         try
         {
             await _peer.SetLocalDescriptionAsync(description, cancellationToken).ConfigureAwait(false);
+            if (_peer.IsIceGatheringComplete)
+            {
+                completion.TrySetResult();
+            }
+
             await completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
         finally

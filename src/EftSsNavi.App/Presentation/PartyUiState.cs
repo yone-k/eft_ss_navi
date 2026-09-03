@@ -24,6 +24,10 @@ public sealed class PartyUiState
 
     public bool MapActionsEnabled => Role != PartyUiRole.Participant;
 
+    public string GroupSectionTitle => Role == PartyUiRole.Host
+        ? "グループ (ホスト中)"
+        : "グループ";
+
     public bool PartyMarkersVisible => Role switch
     {
         PartyUiRole.NotJoined => false,

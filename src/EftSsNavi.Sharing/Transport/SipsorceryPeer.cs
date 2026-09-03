@@ -48,6 +48,9 @@ internal sealed class SipsorceryPeer : IWebRtcPeer
 
     public bool IsDisconnected => Volatile.Read(ref _disconnected) != 0;
 
+    public bool IsIceGatheringComplete =>
+        _peerConnection.iceGatheringState == RTCIceGatheringState.complete;
+
     public string LocalDescriptionSdp =>
         _peerConnection.localDescription?.sdp?.ToString()
         ?? throw new InvalidOperationException("A local WebRTC description has not been set.");

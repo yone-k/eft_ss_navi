@@ -11,7 +11,7 @@ public sealed class PartyStatusMessagesTests
     [Fact]
     public void ShouldUseExactFullPartyMessage()
     {
-        Assert.Equal("パーティが満員です。", PartyStatusMessages.ForRejection(RejectReason.Full));
+        Assert.Equal("グループが満員です。", PartyStatusMessages.ForRejection(RejectReason.Full));
     }
 
     [Fact]
