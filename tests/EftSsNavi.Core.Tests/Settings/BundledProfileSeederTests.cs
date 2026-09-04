@@ -71,6 +71,42 @@ public sealed class BundledProfileSeederTests
     }
 
     [Fact]
+    public void ShouldRelocateBundledProfileWhenApplicationDirectoryChanges()
+    {
+        // Given: The current catalog was applied from a previous application directory.
+        var imageHash = new string('b', 64);
+        var previousBundledProfile = CreateProfile(
+            "Woods",
+            @"C:\OldApp\Assets\Maps\woods-tarkov-dev.png",
+            imageHash).WithImageRotationQuarterTurns(1);
+        var personalProfile = CreateProfile("Personal", @"D:\My Maps\personal.png");
+        var existing = new AppSettings(
+            @"C:\EFT\Screenshots",
+            [previousBundledProfile, personalProfile],
+            "Woods",
+            bundledMapCatalogVersion: 3);
+        var relocatedBundledProfile = CreateProfile(
+            "Woods",
+            @"C:\NewApp\Assets\Maps\woods-tarkov-dev.png",
+            imageHash);
+
+        // When: The same catalog is loaded from the new application directory.
+        var result = BundledProfileSeeder.Apply(
+            existing,
+            [relocatedBundledProfile],
+            catalogVersion: 3);
+
+        // Then: Only the bundled image path moves and the user's settings are retained.
+        var woods = Assert.Single(result.MapProfiles, profile => profile.DisplayName == "Woods");
+        Assert.Equal(relocatedBundledProfile.ImagePath, woods.ImagePath);
+        Assert.Equal(1, woods.ImageRotationQuarterTurns);
+        Assert.Contains(personalProfile, result.MapProfiles);
+        Assert.Equal(existing.WatchDirectory, result.WatchDirectory);
+        Assert.Equal(existing.LastSelectedProfileName, result.LastSelectedProfileName);
+        Assert.Equal(existing.BundledMapCatalogVersion, result.BundledMapCatalogVersion);
+    }
+
+    [Fact]
     public void ShouldReplaceLegacyBundledImageWithoutReplacingPersonalImage()
     {
         // Given: One profile based on a previously bundled image and one personal profile.

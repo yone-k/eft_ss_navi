@@ -17,12 +17,22 @@ public static class BundledProfileSeeder
         ArgumentNullException.ThrowIfNull(bundledProfiles);
         ArgumentOutOfRangeException.ThrowIfLessThan(catalogVersion, 1);
 
+        var relocatedProfiles = RelocateBundledProfiles(
+            settings.MapProfiles,
+            bundledProfiles,
+            out var profilesRelocated);
         if (settings.BundledMapCatalogVersion >= catalogVersion)
         {
-            return settings;
+            return profilesRelocated
+                ? CreateSettings(
+                    settings,
+                    relocatedProfiles,
+                    settings.BundledMapCatalogVersion,
+                    settings.LastSelectedProfileName)
+                : settings;
         }
 
-        var mergedProfiles = settings.MapProfiles.ToList();
+        var mergedProfiles = relocatedProfiles.ToList();
         var replaceableFiles = new HashSet<string>(
             replaceableImageFileNames ?? [],
             StringComparer.OrdinalIgnoreCase);
@@ -81,16 +91,86 @@ public static class BundledProfileSeeder
             }
         }
 
-        return new AppSettings(
-            settings.WatchDirectory,
+        return CreateSettings(
+            settings,
             mergedProfiles
                 .OrderBy(profile => profile.DisplayName, StringComparer.OrdinalIgnoreCase)
                 .ToArray(),
+            catalogVersion,
+            selectedProfileName);
+    }
+
+    private static IReadOnlyList<MapProfile> RelocateBundledProfiles(
+        IReadOnlyList<MapProfile> existingProfiles,
+        IReadOnlyList<MapProfile> bundledProfiles,
+        out bool profilesRelocated)
+    {
+        var result = existingProfiles.ToArray();
+        profilesRelocated = false;
+        for (var index = 0; index < result.Length; index++)
+        {
+            var existing = result[index];
+            var bundled = bundledProfiles.FirstOrDefault(candidate =>
+                string.Equals(
+                    candidate.DisplayName,
+                    existing.DisplayName,
+                    StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(
+                    Path.GetFileName(candidate.ImagePath),
+                    Path.GetFileName(existing.ImagePath),
+                    StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(
+                    candidate.ImageSha256,
+                    existing.ImageSha256,
+                    StringComparison.OrdinalIgnoreCase));
+            if (bundled is null ||
+                !IsBundledMapPath(existing.ImagePath) ||
+                string.Equals(existing.ImagePath, bundled.ImagePath, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            result[index] = new MapProfile(
+                existing.DisplayName,
+                bundled.ImagePath,
+                existing.CalibratedImageWidth,
+                existing.CalibratedImageHeight,
+                existing.ImageSha256,
+                existing.CalibrationPoints,
+                existing.Transform,
+                existing.ImageRotationQuarterTurns);
+            profilesRelocated = true;
+        }
+
+        return result;
+    }
+
+    private static bool IsBundledMapPath(string imagePath)
+    {
+        var mapDirectory = Path.GetDirectoryName(imagePath);
+        var assetsDirectory = Path.GetDirectoryName(mapDirectory);
+        return string.Equals(
+                Path.GetFileName(mapDirectory),
+                "Maps",
+                StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(
+                Path.GetFileName(assetsDirectory),
+                "Assets",
+                StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static AppSettings CreateSettings(
+        AppSettings settings,
+        IReadOnlyList<MapProfile> profiles,
+        int catalogVersion,
+        string? selectedProfileName) =>
+        new(
+            settings.WatchDirectory,
+            profiles,
             selectedProfileName,
             catalogVersion,
             settings.PartyDisplayName,
             settings.SignalingWorkerUrl,
             settings.StunServers,
             settings.IgnoredUpdateVersion);
-    }
 }
