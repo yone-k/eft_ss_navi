@@ -90,6 +90,7 @@ public static class BundledProfileSeeder
             catalogVersion,
             settings.PartyDisplayName,
             settings.SignalingWorkerUrl,
-            settings.StunServers);
+            settings.StunServers,
+            settings.IgnoredUpdateVersion);
     }
 }
