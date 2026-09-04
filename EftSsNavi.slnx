@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/EftSsNavi.Launcher/EftSsNavi.Launcher.csproj" />
     <Project Path="src/EftSsNavi.App/EftSsNavi.App.csproj">
       <Platform Project="x64" />
     </Project>
@@ -7,6 +8,7 @@
     <Project Path="src/EftSsNavi.Sharing/EftSsNavi.Sharing.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/EftSsNavi.Launcher.Tests/EftSsNavi.Launcher.Tests.csproj" />
     <Project Path="tests/EftSsNavi.App.Tests/EftSsNavi.App.Tests.csproj">
       <Platform Project="x64" />
     </Project>

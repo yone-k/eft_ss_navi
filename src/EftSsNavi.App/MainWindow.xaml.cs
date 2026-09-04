@@ -1,14 +1,13 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.Diagnostics;
 using System.Globalization;
-using System.Reflection;
 using EftSsNavi.App.About;
 using EftSsNavi.App.Controls;
 using EftSsNavi.App.Imaging;
 using EftSsNavi.App.Monitoring;
 using EftSsNavi.App.Pickers;
 using EftSsNavi.App.Presentation;
-using EftSsNavi.App.Updates;
 using EftSsNavi.Core.Calibration;
 using EftSsNavi.Core.Images;
 using EftSsNavi.Core.Monitoring;
@@ -32,11 +31,6 @@ namespace EftSsNavi.App;
 
 public sealed partial class MainWindow : Window
 {
-    private static readonly HttpClient UpdateHttpClient = new()
-    {
-        Timeout = TimeSpan.FromSeconds(5),
-    };
-
     private readonly MapCanvas MapControl;
     private readonly ObservableCollection<MapProfile> _profiles = [];
     private readonly IFilePickerService _pickerService = new FilePickerService();
@@ -49,8 +43,8 @@ public sealed partial class MainWindow : Window
     private readonly SettingsRepository _settingsRepository;
     private readonly string _settingsPath;
     private readonly DispatcherQueueTimer _partyRefreshTimer;
-    private readonly CancellationTokenSource _updateCheckCancellation = new();
-    private readonly SemaphoreSlim _updateCheckGate = new(1, 1);
+    private readonly CancellationTokenSource _manualUpdateCancellation = new();
+    private readonly SemaphoreSlim _manualUpdateGate = new(1, 1);
     private IPartyCoordinator? _partyCoordinator;
     private PartyCoordinatorState _partyState = PartyCoordinatorState.Empty;
     private long _partyStateGeneration;
@@ -60,7 +54,6 @@ public sealed partial class MainWindow : Window
     private string? _partyDisplayName;
     private string? _signalingWorkerUrl;
     private IReadOnlyList<string> _stunServers = ["stun:stun.l.google.com:19302"];
-    private string? _ignoredUpdateVersion;
     private bool _partyCloseResumed;
     private bool _partyCloseInProgress;
     private bool _suppressNextSessionEnded;
@@ -116,7 +109,6 @@ public sealed partial class MainWindow : Window
 
         _initialized = true;
         await InitializeAsync();
-        _ = RunStartupUpdateCheckAsync();
     }
 
     private async Task InitializeAsync()
@@ -163,7 +155,6 @@ public sealed partial class MainWindow : Window
         }
 
         _bundledMapCatalogVersion = settings?.BundledMapCatalogVersion ?? 0;
-        _ignoredUpdateVersion = settings?.IgnoredUpdateVersion;
         ConfigureParty(settings ?? new AppSettings(null, [], null));
 
         if (settings is not null)
@@ -1453,75 +1444,146 @@ public sealed partial class MainWindow : Window
 
     private void SetStatus(string message) => StatusText.Text = message;
 
-    private Task RunStartupUpdateCheckAsync() => RunSerializedUpdateCheckAsync(async cancellationToken =>
+    private async void OnCheckForUpdatesClick(object sender, RoutedEventArgs e)
     {
-        var currentVersion = Assembly.GetEntryAssembly()?.GetName().Version;
-        if (currentVersion is null)
+        if (!await _manualUpdateGate.WaitAsync(0))
         {
             return;
         }
 
-        var prompt = new WinUiUpdatePrompt(
-            () => _isClosed ? null : RootGrid.XamlRoot,
-            () => _isClosed);
-        var coordinator = new StartupUpdateCoordinator(
-            new UpdateCheckService(UpdateHttpClient),
-            prompt,
-            new ShellExternalLinkLauncher(),
-            new DelegateUpdateSuppressionStore(TrySaveIgnoredUpdateVersion));
-        await coordinator.RunAsync(
-            UpdateCheckPolicy.ShouldRun(
-                Environment.GetEnvironmentVariable("EFTSSNAVI_DISABLE_UPDATE_CHECK")),
-            currentVersion,
-            _ignoredUpdateVersion,
-            cancellationToken);
-    });
-
-    private async void OnCheckForUpdatesClick(object sender, RoutedEventArgs e)
-    {
-        await RunSerializedUpdateCheckAsync(async cancellationToken =>
-        {
-            var coordinator = new ManualUpdateCoordinator(
-                new UpdateCheckService(UpdateHttpClient),
-                new WinUiManualUpdatePrompt(
-                    () => _isClosed ? null : RootGrid.XamlRoot,
-                    () => _isClosed),
-                new ShellExternalLinkLauncher());
-            await coordinator.RunAsync(
-                Assembly.GetEntryAssembly()?.GetName().Version,
-                cancellationToken);
-        });
-    }
-
-    private async Task RunSerializedUpdateCheckAsync(
-        Func<CancellationToken, Task> operation)
-    {
-        var entered = false;
         try
         {
-            await _updateCheckGate.WaitAsync(_updateCheckCancellation.Token);
-            entered = true;
             if (_isClosed)
             {
                 return;
             }
 
             CheckForUpdatesMenuItem.IsEnabled = false;
-            await operation(_updateCheckCancellation.Token);
+            var launcherPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "EftSsNavi.exe"));
+            if (!File.Exists(launcherPath))
+            {
+                await ShowManualUpdateErrorAsync("アップデート用ランチャーが見つかりません。");
+                return;
+            }
+
+            var shutdownEventName = $"Local\\EftSsNavi.Shutdown.{Guid.NewGuid():N}";
+            using var shutdownEvent = new EventWaitHandle(
+                initialState: false,
+                EventResetMode.ManualReset,
+                shutdownEventName);
+            using var currentProcess = Process.GetCurrentProcess();
+            var startInfo = new ProcessStartInfo(launcherPath)
+            {
+                UseShellExecute = false,
+                WorkingDirectory = Path.GetDirectoryName(launcherPath),
+            };
+            startInfo.ArgumentList.Add("--manual-update");
+            startInfo.ArgumentList.Add("--caller-pid");
+            startInfo.ArgumentList.Add(currentProcess.Id.ToString(CultureInfo.InvariantCulture));
+            startInfo.ArgumentList.Add("--caller-session-id");
+            startInfo.ArgumentList.Add(currentProcess.SessionId.ToString(CultureInfo.InvariantCulture));
+            startInfo.ArgumentList.Add("--caller-path");
+            startInfo.ArgumentList.Add(Environment.ProcessPath ?? string.Empty);
+            startInfo.ArgumentList.Add("--shutdown-event");
+            startInfo.ArgumentList.Add(shutdownEventName);
+
+            using var launcherProcess = Process.Start(startInfo);
+            if (launcherProcess is null)
+            {
+                await ShowManualUpdateErrorAsync("アップデート用ランチャーを起動できませんでした。");
+                return;
+            }
+
+            using var manualUpdateWaitCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                _manualUpdateCancellation.Token);
+            var cancellationToken = manualUpdateWaitCancellation.Token;
+            var exitTask = launcherProcess.WaitForExitAsync(cancellationToken);
+            var shutdownTask = WaitForSignalAsync(shutdownEvent, cancellationToken);
+            if (await Task.WhenAny(exitTask, shutdownTask) == shutdownTask)
+            {
+                if (await shutdownTask)
+                {
+                    Close();
+                }
+
+                await exitTask;
+            }
+            else
+            {
+                await exitTask;
+                manualUpdateWaitCancellation.Cancel();
+                try
+                {
+                    await shutdownTask;
+                }
+                catch (OperationCanceledException) when (manualUpdateWaitCancellation.IsCancellationRequested)
+                {
+                    // The launcher exited without requesting application shutdown.
+                }
+            }
         }
-        catch (OperationCanceledException) when (_updateCheckCancellation.IsCancellationRequested)
+        catch (OperationCanceledException) when (_manualUpdateCancellation.IsCancellationRequested)
         {
-            // Closing the window cancels update work without showing another dialog.
+            // Closing the window cancels launcher monitoring.
+        }
+        catch (Exception exception)
+        {
+            await ShowManualUpdateErrorAsync($"アップデート用ランチャーを起動できませんでした。{exception.Message}");
         }
         finally
         {
-            if (entered)
+            _manualUpdateGate.Release();
+            if (!_isClosed)
             {
-                _updateCheckGate.Release();
-                if (!_isClosed)
-                {
-                    CheckForUpdatesMenuItem.IsEnabled = true;
-                }
+                CheckForUpdatesMenuItem.IsEnabled = true;
+            }
+        }
+    }
+
+    private async Task ShowManualUpdateErrorAsync(string message)
+    {
+        if (_isClosed || RootGrid.XamlRoot is null)
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = RootGrid.XamlRoot,
+            Title = "アップデートエラー",
+            Content = message,
+            CloseButtonText = "閉じる",
+        };
+        await dialog.ShowAsync();
+    }
+
+    private static Task<bool> WaitForSignalAsync(WaitHandle waitHandle, CancellationToken cancellationToken)
+    {
+        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        RegisteredWaitHandle? registeredWait = null;
+        CancellationTokenRegistration cancellationRegistration = default;
+        registeredWait = ThreadPool.RegisterWaitForSingleObject(
+            waitHandle,
+            (_, timedOut) => completion.TrySetResult(!timedOut),
+            null,
+            Timeout.InfiniteTimeSpan,
+            executeOnlyOnce: true);
+        cancellationRegistration = cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
+        return AwaitAndCleanupAsync(completion.Task, registeredWait, cancellationRegistration);
+
+        static async Task<bool> AwaitAndCleanupAsync(
+            Task<bool> task,
+            RegisteredWaitHandle registeredWait,
+            CancellationTokenRegistration cancellationRegistration)
+        {
+            try
+            {
+                return await task;
+            }
+            finally
+            {
+                registeredWait.Unregister(null);
+                cancellationRegistration.Dispose();
             }
         }
     }
@@ -1531,20 +1593,7 @@ public sealed partial class MainWindow : Window
         var coordinator = AboutCoordinator.CreateDefault(
             () => _isClosed ? null : RootGrid.XamlRoot,
             () => _isClosed);
-        await coordinator.ShowAsync(_updateCheckCancellation.Token);
-    }
-
-    private bool TrySaveIgnoredUpdateVersion(string normalizedVersion)
-    {
-        var previousVersion = _ignoredUpdateVersion;
-        _ignoredUpdateVersion = normalizedVersion;
-        if (PersistSettings() is null)
-        {
-            return true;
-        }
-
-        _ignoredUpdateVersion = previousVersion;
-        return false;
+        await coordinator.ShowAsync(_manualUpdateCancellation.Token);
     }
 
     private string? PersistSettings()
@@ -1557,8 +1606,7 @@ public sealed partial class MainWindow : Window
             _bundledMapCatalogVersion,
             _partyDisplayName,
             _signalingWorkerUrl,
-            _stunServers,
-            _ignoredUpdateVersion));
+            _stunServers));
         if (!result.IsSuccess)
         {
             var message = $"設定を保存できません。{result.ErrorMessage}";
@@ -1693,8 +1741,8 @@ public sealed partial class MainWindow : Window
     {
         _isClosed = true;
         _profiles.CollectionChanged -= OnProfilesChanged;
-        _updateCheckCancellation.Cancel();
-        _updateCheckCancellation.Dispose();
+        _manualUpdateCancellation.Cancel();
+        _manualUpdateCancellation.Dispose();
         AppWindow.Closing -= OnAppWindowClosing;
         _partyRefreshTimer.Stop();
         _partyRefreshTimer.Tick -= OnPartyRefreshTimerTick;

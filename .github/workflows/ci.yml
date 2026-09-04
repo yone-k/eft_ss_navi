@@ -52,6 +52,12 @@ jobs:
       - name: Run App tests
         run: dotnet test tests/EftSsNavi.App.Tests/EftSsNavi.App.Tests.csproj -c Release -r win-x64 --no-restore
 
+      - name: Restore Launcher tests
+        run: dotnet restore tests/EftSsNavi.Launcher.Tests/EftSsNavi.Launcher.Tests.csproj -r win-x64
+
+      - name: Run Launcher tests
+        run: dotnet test tests/EftSsNavi.Launcher.Tests/EftSsNavi.Launcher.Tests.csproj -c Release -r win-x64 --no-restore
+
   build:
     runs-on: windows-latest
     steps:

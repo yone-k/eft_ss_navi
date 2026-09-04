@@ -170,7 +170,7 @@ public sealed class ApplicationPublishTests
             Assert.True(
                 File.Exists(Path.Combine(publishDirectory, "THIRD-PARTY-NOTICES.md")),
                 diagnosticOutput);
-            Assert.True(
+            Assert.False(
                 File.Exists(Path.Combine(publishDirectory, "README.md")),
                 diagnosticOutput);
             Assert.True(
@@ -203,6 +203,94 @@ public sealed class ApplicationPublishTests
                 Directory.Delete(buildDirectory, recursive: true);
             }
         }
+    }
+
+    [Fact]
+    public void ShouldPublishApplicationAndLauncherWithTheSameVersionIntoTheDistributionLayout()
+    {
+        // Given: The release workflow that assembles the Windows distribution.
+        var workflow = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            ".github",
+            "workflows",
+            "release.yml"));
+
+        // When: The application and launcher publish commands are inspected.
+        // Then: Both receive the tag-derived version and publish to their assigned directories.
+        Assert.Contains(
+            "dotnet publish src/EftSsNavi.App/EftSsNavi.App.csproj -c Release -r win-x64 --no-restore -o publish/app -p:Version=${{ steps.version.outputs.version }}",
+            workflow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "dotnet publish src/EftSsNavi.Launcher/EftSsNavi.Launcher.csproj -c Release -r win-x64 --no-restore -o publish -p:Version=${{ steps.version.outputs.version }}",
+            workflow,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ShouldValidateTheThreeRootEntriesAndRequiredApplicationFiles()
+    {
+        // Given: The release workflow that validates the assembled distribution.
+        var workflow = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            ".github",
+            "workflows",
+            "release.yml"));
+
+        // When: Its publish validation is inspected.
+        // Then: The public launcher, README, and app directory are the only root entries,
+        // and the application files required by the updater are mandatory.
+        Assert.Contains("'EftSsNavi.exe'", workflow, StringComparison.Ordinal);
+        Assert.Contains("'README.md'", workflow, StringComparison.Ordinal);
+        Assert.Contains("'app'", workflow, StringComparison.Ordinal);
+        Assert.Contains("'publish/app/EftSsNavi.App.exe'", workflow, StringComparison.Ordinal);
+        Assert.Contains("'publish/app/EftSsNavi.Sharing.dll'", workflow, StringComparison.Ordinal);
+        Assert.Contains("'publish/app/SIPSorcery.dll'", workflow, StringComparison.Ordinal);
+        Assert.Contains("'publish/app/THIRD-PARTY-NOTICES.md'", workflow, StringComparison.Ordinal);
+        Assert.Contains("'publish/app/Assets/Maps/catalog.json'", workflow, StringComparison.Ordinal);
+        Assert.Contains("Unexpected publish root entries", workflow, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ShouldCreateTheReleaseArchiveWithTheStableAssetName()
+    {
+        // Given: The release workflow.
+        var workflow = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            ".github",
+            "workflows",
+            "release.yml"));
+
+        // When: The archive creation and upload configuration are inspected.
+        // Then: The ZIP has no version in its asset name and archives the publish contents directly.
+        Assert.Contains(
+            "Compress-Archive -Path publish/* -DestinationPath EftSsNavi-win-x64.zip",
+            workflow,
+            StringComparison.Ordinal);
+        Assert.Contains("files: EftSsNavi-win-x64.zip", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("EftSsNavi-${{ github.ref_name }}-win-x64.zip", workflow, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ShouldRunLauncherTestsInContinuousIntegration()
+    {
+        // Given: The continuous-integration workflow.
+        var workflow = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            ".github",
+            "workflows",
+            "ci.yml"));
+
+        // When: Its test commands are inspected.
+        // Then: Launcher tests are restored and run for win-x64.
+        Assert.Contains(
+            "dotnet restore tests/EftSsNavi.Launcher.Tests/EftSsNavi.Launcher.Tests.csproj -r win-x64",
+            workflow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "dotnet test tests/EftSsNavi.Launcher.Tests/EftSsNavi.Launcher.Tests.csproj -c Release -r win-x64 --no-restore",
+            workflow,
+            StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

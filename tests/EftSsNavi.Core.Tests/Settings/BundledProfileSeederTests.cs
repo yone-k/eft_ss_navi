@@ -240,27 +240,6 @@ public sealed class BundledProfileSeederTests
         Assert.Equal(existing.StunServers, result.StunServers);
     }
 
-    [Fact]
-    public void ShouldPreserveIgnoredUpdateVersionWhenCatalogVersionChanges()
-    {
-        // Given: A suppressed application update and an older bundled-map catalog.
-        var existing = new AppSettings(
-            null,
-            [],
-            null,
-            bundledMapCatalogVersion: 1,
-            ignoredUpdateVersion: "0.10.0");
-
-        // When: A newer bundled catalog rebuilds the settings snapshot.
-        var result = BundledProfileSeeder.Apply(
-            existing,
-            [CreateProfile("Woods")],
-            catalogVersion: 2);
-
-        // Then: The application update suppression is retained.
-        Assert.Equal(existing.IgnoredUpdateVersion, result.IgnoredUpdateVersion);
-    }
-
     private static MapProfile CreateProfile(
         string name,
         string? imagePath = null,

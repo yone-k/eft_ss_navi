@@ -10,27 +10,9 @@ public sealed class SettingsRepositoryTests
     private const string DefaultStunServer = "stun:stun.l.google.com:19302";
 
     [Fact]
-    public void ShouldRoundTripIgnoredUpdateVersionThroughSystemTextJson()
+    public void ShouldIgnoreLegacyIgnoredUpdateVersionWhenLoadingSettings()
     {
-        // Given: Settings that suppress one released application version.
-        var settings = new AppSettings(
-            @"C:\EFT\Screenshots",
-            [CreateProfile("Woods")],
-            "Woods",
-            ignoredUpdateVersion: "0.10.0");
-
-        // When: The settings are serialized and restored.
-        var restored = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(settings));
-
-        // Then: The version-specific suppression is retained.
-        Assert.NotNull(restored);
-        Assert.Equal("0.10.0", restored.IgnoredUpdateVersion);
-    }
-
-    [Fact]
-    public void ShouldRestoreNullIgnoredUpdateVersionFromLegacySettings()
-    {
-        // Given: A settings document written before update notifications existed.
+        // Given: A settings document written by the legacy in-app updater.
         var fileSystem = new FakeSettingsFileSystem();
         fileSystem.SeedFile(
             DestinationPath,
@@ -39,17 +21,19 @@ public sealed class SettingsRepositoryTests
               "WatchDirectory": null,
               "MapProfiles": [],
               "LastSelectedProfileName": null,
-              "BundledMapCatalogVersion": 0
+              "BundledMapCatalogVersion": 0,
+              "IgnoredUpdateVersion": "0.10.0"
             }
             """);
         var repository = new SettingsRepository(fileSystem, DestinationPath);
 
-        // When: The legacy document is loaded.
+        // When: The document is loaded and then saved by the current application.
         var result = repository.Load();
-
-        // Then: Update notifications default to not being suppressed.
         Assert.True(result.IsSuccess);
-        Assert.Null(result.Value?.IgnoredUpdateVersion);
+        Assert.True(repository.Save(Assert.IsType<AppSettings>(result.Value)).IsSuccess);
+
+        // Then: The obsolete property is ignored and no longer persisted.
+        Assert.DoesNotContain("IgnoredUpdateVersion", fileSystem.GetFile(DestinationPath));
     }
 
     [Fact]

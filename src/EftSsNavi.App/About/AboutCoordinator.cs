@@ -1,5 +1,4 @@
 using System.Reflection;
-using EftSsNavi.App.Updates;
 using Microsoft.UI.Xaml;
 
 namespace EftSsNavi.App.About;
