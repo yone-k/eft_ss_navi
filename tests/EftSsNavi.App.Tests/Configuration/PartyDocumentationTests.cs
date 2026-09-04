@@ -48,8 +48,8 @@ public sealed class PartyDocumentationTests
         Assert.Contains("EftSsNavi.Sharing.Tests.csproj", workflow, StringComparison.Ordinal);
         Assert.Contains("EftSsNavi.App.Tests.csproj", workflow, StringComparison.Ordinal);
         Assert.Contains("worker:", workflow, StringComparison.Ordinal);
-        Assert.Contains("actions/setup-node@v4", workflow, StringComparison.Ordinal);
-        Assert.Contains("node-version: 22", workflow, StringComparison.Ordinal);
+        Assert.Contains("actions/setup-node@v5", workflow, StringComparison.Ordinal);
+        Assert.Contains("node-version: 24", workflow, StringComparison.Ordinal);
         Assert.Contains("cache-dependency-path: workers/signaling/package-lock.json", workflow, StringComparison.Ordinal);
         Assert.Contains("npm ci", workflow, StringComparison.Ordinal);
         Assert.Contains("npm test", workflow, StringComparison.Ordinal);
