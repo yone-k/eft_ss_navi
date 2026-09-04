@@ -45,6 +45,22 @@ public sealed class MainWindowMapMarkerTests
         Assert.Contains("MapContentViewportFitter.Fit(", mapCanvas);
     }
 
+    [Fact]
+    public void ShouldClearBundledMarkersWhenManuallyAddingMap()
+    {
+        // Given: Bundled markers may still be displayed for the previously selected map.
+        var root = FindRepositoryRoot();
+        var mainWindow = File.ReadAllText(Path.Combine(root, "src", "EftSsNavi.App", "MainWindow.xaml.cs"));
+
+        // When: A manually selected image becomes a new map profile.
+        var normalizedSource = mainWindow.Replace("\r\n", "\n");
+
+        // Then: Markers that only belong to the bundled map are cleared before the new profile is shown.
+        Assert.Contains(
+            "MapControl.SetMarker(null, null);\n        SetBundledMapMarkers(null);\n        _profiles.Add(profile);",
+            normalizedSource);
+    }
+
     private static string FindRepositoryRoot()
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory);
