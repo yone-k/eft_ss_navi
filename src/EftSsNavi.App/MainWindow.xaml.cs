@@ -451,6 +451,7 @@ public sealed partial class MainWindow : Window
         MapControl.SetImageRotation(profile.ImageRotationQuarterTurns);
         MapControl.SetImage(loadResult.Image);
         MapControl.SetMarker(null, null);
+        SetBundledMapMarkers(null);
         _profiles.Add(profile);
         SetSelectedProfile(profile);
         _progressiveCalibrationSession = new ProgressiveCalibrationSession(profile);
