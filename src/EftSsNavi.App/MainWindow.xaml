@@ -37,7 +37,7 @@
                 <MenuFlyoutItem x:Name="OpenPartyMenuItem" Click="OnPartyClick" Text="グループを開く" />
             </MenuBarItem>
             <MenuBarItem x:Name="HelpMenu" Title="ヘルプ">
-                <MenuFlyoutItem x:Name="CheckForUpdatesMenuItem" Click="OnCheckForUpdatesClick" Text="アップデートを確認" IsEnabled="False" />
+                <MenuFlyoutItem x:Name="CheckForUpdatesMenuItem" Click="OnCheckForUpdatesClick" Text="アップデートを確認" />
                 <MenuFlyoutSeparator />
                 <MenuFlyoutItem x:Name="AboutMenuItem" Click="OnAboutClick" Text="バージョン情報" />
             </MenuBarItem>

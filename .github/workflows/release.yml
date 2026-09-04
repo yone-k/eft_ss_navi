@@ -41,22 +41,50 @@ jobs:
           $version = '${{ github.ref_name }}' -replace '^v', ''
           "version=$version" >> $env:GITHUB_OUTPUT
 
-      - name: Restore application
-        run: dotnet restore src/EftSsNavi.App/EftSsNavi.App.csproj -r win-x64
+      - name: Restore application and launcher
+        shell: pwsh
+        run: |
+          dotnet restore src/EftSsNavi.App/EftSsNavi.App.csproj -r win-x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet restore src/EftSsNavi.Launcher/EftSsNavi.Launcher.csproj -r win-x64
 
       - name: Publish application
-        run: dotnet publish src/EftSsNavi.App/EftSsNavi.App.csproj -c Release -r win-x64 --no-restore -o publish -p:Version=${{ steps.version.outputs.version }}
+        run: dotnet publish src/EftSsNavi.App/EftSsNavi.App.csproj -c Release -r win-x64 --no-restore -o publish/app -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Publish launcher
+        run: dotnet publish src/EftSsNavi.Launcher/EftSsNavi.Launcher.csproj -c Release -r win-x64 --no-restore -o publish -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Add user documentation
+        shell: pwsh
+        run: Copy-Item -LiteralPath README.md -Destination publish/README.md
 
       - name: Validate publish output
         shell: pwsh
         run: |
+          $expectedRootEntries = @(
+            'EftSsNavi.exe'
+            'README.md'
+            'app'
+          )
+          $actualRootEntries = Get-ChildItem -LiteralPath publish |
+            ForEach-Object Name |
+            Sort-Object
+          $unexpectedRootEntries = Compare-Object `
+            -ReferenceObject ($expectedRootEntries | Sort-Object) `
+            -DifferenceObject $actualRootEntries
+          if ($unexpectedRootEntries) {
+            Write-Error "Unexpected publish root entries: $($actualRootEntries -join ', ')"
+            exit 1
+          }
+
           $requiredFiles = @(
-            'publish/EftSsNavi.App.exe'
-            'publish/EftSsNavi.Sharing.dll'
-            'publish/SIPSorcery.dll'
-            'publish/THIRD-PARTY-NOTICES.md'
             'publish/README.md'
-            'publish/Assets/Maps/catalog.json'
+            'publish/EftSsNavi.exe'
+            'publish/app/EftSsNavi.App.exe'
+            'publish/app/EftSsNavi.Sharing.dll'
+            'publish/app/SIPSorcery.dll'
+            'publish/app/THIRD-PARTY-NOTICES.md'
+            'publish/app/Assets/Maps/catalog.json'
           )
 
           foreach ($file in $requiredFiles) {
@@ -72,14 +100,23 @@ jobs:
             exit 1
           }
 
+          $launcherVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo(
+            (Resolve-Path -LiteralPath 'publish/EftSsNavi.exe')).FileVersion
+          $applicationVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo(
+            (Resolve-Path -LiteralPath 'publish/app/EftSsNavi.App.exe')).FileVersion
+          if ($launcherVersion -ne $applicationVersion) {
+            Write-Error "Launcher and application versions differ: $launcherVersion != $applicationVersion"
+            exit 1
+          }
+
       - name: Create release archive
         shell: pwsh
-        run: Compress-Archive -Path publish/* -DestinationPath EftSsNavi-${{ github.ref_name }}-win-x64.zip
+        run: Compress-Archive -Path publish/* -DestinationPath EftSsNavi-win-x64.zip
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: EftSsNavi-${{ github.ref_name }}-win-x64.zip
+          files: EftSsNavi-win-x64.zip
           name: ${{ github.ref_name }}
           generate_release_notes: true
           body: |
@@ -94,8 +131,8 @@ jobs:
 
             1. 必要なランタイムをインストールします。
             2. 配布ZIPをダウンロードして展開します。
-            3. `EftSsNavi.App.exe`を起動します。
+            3. 展開先のルートにある`EftSsNavi.exe`を起動します。
 
-            アプリ本体だけを別の場所へ移動せず、展開したファイル一式を同じフォルダーに置いたまま起動してください。
+            `app`フォルダー内のファイルだけを移動せず、展開した構成を保って利用してください。v0.2.2以前から更新する場合は、古いフォルダーへ上書きせず、新しいZIPを別のフォルダーへ展開してください。
           draft: false
           prerelease: false

@@ -1,5 +1,4 @@
 using EftSsNavi.App.About;
-using EftSsNavi.App.Updates;
 
 namespace EftSsNavi.App.Tests.About;
 

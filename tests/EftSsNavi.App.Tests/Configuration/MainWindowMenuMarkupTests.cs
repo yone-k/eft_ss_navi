@@ -122,7 +122,7 @@ public sealed class MainWindowMenuMarkupTests
     }
 
     [Fact]
-    public void ShouldStartConditionalAndUpdateActionsInSafeState()
+    public void ShouldStartConditionalActionsInSafeStateAndAllowManualUpdateCheck()
     {
         // Given: The application menu actions that depend on runtime state.
         var document = LoadMarkup();
@@ -134,11 +134,11 @@ public sealed class MainWindowMenuMarkupTests
         var checkForUpdates = FindNamedElement(document, "CheckForUpdatesMenuItem");
 
         // Then: Placeholders cannot be invoked, conditional actions are hidden, and
-        // update checking waits until startup coordination enables it.
+        // the manual launcher entry remains reachable without a startup update flow.
         Assert.Equal("False", (string?)noMaps.Attribute("IsEnabled"));
         Assert.Equal("Collapsed", (string?)cancelCorrection.Attribute("Visibility"));
         Assert.Equal("Collapsed", (string?)confirmCorrection.Attribute("Visibility"));
-        Assert.Equal("False", (string?)checkForUpdates.Attribute("IsEnabled"));
+        Assert.Null(checkForUpdates.Attribute("IsEnabled"));
     }
 
     [Theory]

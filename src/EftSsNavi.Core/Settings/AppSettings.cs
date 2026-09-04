@@ -17,8 +17,7 @@ public sealed class AppSettings
         int bundledMapCatalogVersion = 0,
         string? partyDisplayName = null,
         string? signalingWorkerUrl = null,
-        IReadOnlyList<string>? stunServers = null,
-        string? ignoredUpdateVersion = null)
+        IReadOnlyList<string>? stunServers = null)
     {
         ArgumentNullException.ThrowIfNull(mapProfiles);
 
@@ -30,7 +29,6 @@ public sealed class AppSettings
         SignalingWorkerUrl = signalingWorkerUrl;
         StunServers = new ReadOnlyCollection<string>(
             (stunServers ?? [DefaultStunServer]).ToArray());
-        IgnoredUpdateVersion = ignoredUpdateVersion;
     }
 
     public string? WatchDirectory { get; }
@@ -47,5 +45,4 @@ public sealed class AppSettings
 
     public IReadOnlyList<string> StunServers { get; }
 
-    public string? IgnoredUpdateVersion { get; }
 }
