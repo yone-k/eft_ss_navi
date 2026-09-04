@@ -21,12 +21,13 @@ public sealed class UpdateCheckServiceTests
         var result = await service.CheckAsync(new Version(0, 9, 0, 42), ignoredVersion: null);
 
         // Then: The revision is ignored and the matching release is returned.
-        Assert.NotNull(result);
-        Assert.Equal("v0.10.0", result.DisplayVersion);
-        Assert.Equal("0.10.0", result.NormalizedVersion);
+        Assert.Equal(UpdateCheckStatus.UpdateAvailable, result.Status);
+        var candidate = Assert.IsType<UpdateCandidate>(result.Candidate);
+        Assert.Equal("v0.10.0", candidate.DisplayVersion);
+        Assert.Equal("0.10.0", candidate.NormalizedVersion);
         Assert.Equal(
             "https://github.com/yone-k/eft_ss_navi/releases/download/v0.10.0/EftSsNavi-v0.10.0-win-x64.zip",
-            result.DownloadUri.AbsoluteUri);
+            candidate.DownloadUri.AbsoluteUri);
     }
 
     [Fact]
@@ -62,7 +63,7 @@ public sealed class UpdateCheckServiceTests
     [Theory]
     [InlineData("v0.9.0")]
     [InlineData("v0.8.9")]
-    public async Task ShouldNotReturnReleaseWhenLatestVersionIsNotNewer(string latestTag)
+    public async Task ShouldReturnUpToDateWhenLatestVersionIsNotNewer(string latestTag)
     {
         // Given: GitHub returns the same or an older release.
         using var client = CreateClient(latestTag);
@@ -71,12 +72,13 @@ public sealed class UpdateCheckServiceTests
         // When: The release is compared with the running version.
         var result = await service.CheckAsync(new Version(0, 9, 0, 99), ignoredVersion: null);
 
-        // Then: No update is offered.
-        Assert.Null(result);
+        // Then: The caller can distinguish an up-to-date result from a failure.
+        Assert.Equal(UpdateCheckStatus.UpToDate, result.Status);
+        Assert.Null(result.Candidate);
     }
 
     [Fact]
-    public async Task ShouldNotReturnReleaseWhenLatestVersionWasIgnored()
+    public async Task ShouldReturnSuppressedWhenLatestVersionWasIgnored()
     {
         // Given: The latest release is the version the user suppressed.
         using var client = CreateClient("v0.10.0");
@@ -85,8 +87,9 @@ public sealed class UpdateCheckServiceTests
         // When: The release is checked with that ignored version.
         var result = await service.CheckAsync(new Version(0, 9, 0), ignoredVersion: "0.10.0");
 
-        // Then: No update is offered.
-        Assert.Null(result);
+        // Then: The caller can preserve the startup notification suppression policy.
+        Assert.Equal(UpdateCheckStatus.Suppressed, result.Status);
+        Assert.Null(result.Candidate);
     }
 
     [Fact]
@@ -100,8 +103,8 @@ public sealed class UpdateCheckServiceTests
         var result = await service.CheckAsync(new Version(0, 9, 0), ignoredVersion: "0.10.0");
 
         // Then: The future release is offered.
-        Assert.NotNull(result);
-        Assert.Equal("0.11.0", result.NormalizedVersion);
+        Assert.Equal(UpdateCheckStatus.UpdateAvailable, result.Status);
+        Assert.Equal("0.11.0", result.Candidate?.NormalizedVersion);
     }
 
     [Theory]
@@ -110,7 +113,7 @@ public sealed class UpdateCheckServiceTests
     [InlineData("v0.10.0.0")]
     [InlineData("v0.10.0-beta")]
     [InlineData("v00.10.0")]
-    public async Task ShouldIgnoreReleaseWhenTagIsNotStrictThreePartVersion(string invalidTag)
+    public async Task ShouldReturnFailureWhenTagIsNotStrictThreePartVersion(string invalidTag)
     {
         // Given: GitHub returns a release with a tag outside vX.Y.Z.
         using var client = CreateClient(invalidTag);
@@ -119,12 +122,13 @@ public sealed class UpdateCheckServiceTests
         // When: The release is checked.
         var result = await service.CheckAsync(new Version(0, 1, 0), ignoredVersion: null);
 
-        // Then: The malformed release is ignored.
-        Assert.Null(result);
+        // Then: The malformed release is reported as a failed check.
+        Assert.Equal(UpdateCheckStatus.Failed, result.Status);
+        Assert.Null(result.Candidate);
     }
 
     [Fact]
-    public async Task ShouldIgnoreReleaseWhenArchiveNameDoesNotMatchTag()
+    public async Task ShouldReturnFailureWhenArchiveNameDoesNotMatchTag()
     {
         // Given: The asset name belongs to another version.
         var handler = new StubHttpMessageHandler(_ => JsonResponse(ReleaseJson(
@@ -137,12 +141,13 @@ public sealed class UpdateCheckServiceTests
         // When: The release is checked.
         var result = await service.CheckAsync(new Version(0, 9, 0), ignoredVersion: null);
 
-        // Then: The mismatched archive is ignored.
-        Assert.Null(result);
+        // Then: The missing matching archive is reported as a failed check.
+        Assert.Equal(UpdateCheckStatus.Failed, result.Status);
+        Assert.Null(result.Candidate);
     }
 
     [Fact]
-    public async Task ShouldIgnoreReleaseWhenArchiveUrlIsNotHttps()
+    public async Task ShouldReturnFailureWhenArchiveUrlIsNotHttps()
     {
         // Given: The matching asset has a non-HTTPS URL.
         var handler = new StubHttpMessageHandler(_ => JsonResponse(ReleaseJson(
@@ -155,12 +160,13 @@ public sealed class UpdateCheckServiceTests
         // When: The release is checked.
         var result = await service.CheckAsync(new Version(0, 9, 0), ignoredVersion: null);
 
-        // Then: The unsafe URL is ignored.
-        Assert.Null(result);
+        // Then: The unsafe URL is reported as a failed check.
+        Assert.Equal(UpdateCheckStatus.Failed, result.Status);
+        Assert.Null(result.Candidate);
     }
 
     [Fact]
-    public async Task ShouldIgnoreDraftOrPrereleaseResponse()
+    public async Task ShouldReturnFailureForDraftOrPrereleaseResponse()
     {
         // Given: The API unexpectedly returns a prerelease.
         var json = ReleaseJson(
@@ -175,14 +181,15 @@ public sealed class UpdateCheckServiceTests
         // When: The response is checked.
         var result = await service.CheckAsync(new Version(0, 9, 0), ignoredVersion: null);
 
-        // Then: The prerelease is ignored.
-        Assert.Null(result);
+        // Then: The unusable release is reported as a failed check.
+        Assert.Equal(UpdateCheckStatus.Failed, result.Status);
+        Assert.Null(result.Candidate);
     }
 
     [Theory]
     [InlineData(HttpStatusCode.Forbidden, "{}")]
     [InlineData(HttpStatusCode.OK, "not-json")]
-    public async Task ShouldReturnNoUpdateWhenResponseCannotBeUsed(HttpStatusCode statusCode, string body)
+    public async Task ShouldReturnFailureWhenResponseCannotBeUsed(HttpStatusCode statusCode, string body)
     {
         // Given: GitHub returns a failed status or invalid JSON.
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(statusCode)
@@ -195,12 +202,13 @@ public sealed class UpdateCheckServiceTests
         // When: The response is checked.
         var result = await service.CheckAsync(new Version(0, 9, 0), ignoredVersion: null);
 
-        // Then: Startup can continue without an update.
-        Assert.Null(result);
+        // Then: The caller can distinguish the failure from an up-to-date result.
+        Assert.Equal(UpdateCheckStatus.Failed, result.Status);
+        Assert.Null(result.Candidate);
     }
 
     [Fact]
-    public async Task ShouldReturnNoUpdateWhenRequestIsCanceled()
+    public async Task ShouldReturnCanceledWhenRequestIsCanceled()
     {
         // Given: The GitHub request observes cancellation.
         var handler = new StubHttpMessageHandler(async (_, cancellationToken) =>
@@ -219,8 +227,47 @@ public sealed class UpdateCheckServiceTests
             ignoredVersion: null,
             cancellation.Token);
 
-        // Then: Cancellation is converted to no update.
-        Assert.Null(result);
+        // Then: Cancellation is distinct from a failed check.
+        Assert.Equal(UpdateCheckStatus.Canceled, result.Status);
+        Assert.Null(result.Candidate);
+    }
+
+    [Fact]
+    public async Task ShouldReturnFailureWhenRequestThrows()
+    {
+        // Given: The HTTP transport fails before a response is received.
+        var handler = new StubHttpMessageHandler((_, _) =>
+            Task.FromException<HttpResponseMessage>(new HttpRequestException("Network unavailable.")));
+        using var client = new HttpClient(handler);
+        var service = new UpdateCheckService(client);
+
+        // When: The release is checked.
+        var result = await service.CheckAsync(new Version(0, 9, 0), ignoredVersion: null);
+
+        // Then: The transport error is represented as a failed check.
+        Assert.Equal(UpdateCheckStatus.Failed, result.Status);
+        Assert.Null(result.Candidate);
+    }
+
+    [Fact]
+    public async Task ShouldReturnFailureWithoutRequestWhenCurrentVersionCannotBeNormalized()
+    {
+        // Given: A handler that records whether an HTTP request is attempted.
+        var requestCount = 0;
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            requestCount++;
+            return JsonResponse("{}");
+        });
+        using var client = new HttpClient(handler);
+        var service = new UpdateCheckService(client);
+
+        // When: A two-component current version is checked.
+        var result = await service.CheckAsync(new Version(0, 9), ignoredVersion: null);
+
+        // Then: Validation fails locally without contacting GitHub.
+        Assert.Equal(UpdateCheckStatus.Failed, result.Status);
+        Assert.Equal(0, requestCount);
     }
 
     private static HttpClient CreateClient(string tag)

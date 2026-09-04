@@ -5,7 +5,7 @@ namespace EftSsNavi.App.Tests.Configuration;
 public sealed class MainWindowCorrectionMarkupTests
 {
     [Fact]
-    public void ShouldExposePositionCorrectionFromMainToolbar()
+    public void ShouldExposePositionCorrectionFromMapMenuOnly()
     {
         // Given: The main-window markup.
         var document = XDocument.Load(Path.Combine(
@@ -16,14 +16,16 @@ public sealed class MainWindowCorrectionMarkupTests
         XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
 
         // When: The position-correction entry point is located.
-        var button = document.Descendants()
+        var menuItem = document.Descendants()
             .SingleOrDefault(element =>
-                (string?)element.Attribute(xaml + "Name") == "CorrectionModeButton");
+                (string?)element.Attribute(xaml + "Name") == "StartCorrectionMenuItem");
 
-        // Then: The toolbar exposes the actual click handler used to start correction.
-        Assert.NotNull(button);
-        Assert.Equal("位置を補正", (string?)button.Attribute("Content"));
-        Assert.Equal("OnCorrectionModeClick", (string?)button.Attribute("Click"));
+        // Then: The map menu exposes the correction action and the toolbar does not.
+        Assert.NotNull(menuItem);
+        Assert.Equal("位置を補正", (string?)menuItem.Attribute("Text"));
+        Assert.Equal("OnCorrectionModeClick", (string?)menuItem.Attribute("Click"));
+        Assert.DoesNotContain(document.Descendants(), element =>
+            (string?)element.Attribute(xaml + "Name") == "CorrectionModeButton");
     }
 
     [Fact]
@@ -38,9 +40,9 @@ public sealed class MainWindowCorrectionMarkupTests
 
         // Then: Selection updates visibility through the bundled-profile-aware policy.
         Assert.Contains("_bundledProfiles = bundledCatalog.Profiles", source);
-        Assert.Contains("UpdateCorrectionModeButtonAvailability(profile)", source);
+        Assert.Contains("UpdateCorrectionMenuAvailability(profile)", source);
         Assert.Contains("PositionCorrectionAvailability.IsAvailable(profile, _bundledProfiles)", source);
-        Assert.Contains("CorrectionModeButton.Visibility =", source);
+        Assert.Contains("StartCorrectionMenuItem.IsEnabled =", source);
     }
 
     [Fact]
@@ -63,6 +65,12 @@ public sealed class MainWindowCorrectionMarkupTests
         Assert.NotNull(button);
         Assert.Equal("補正を確定", (string?)button.Attribute("Content"));
         Assert.Equal("OnConfirmCorrectionClick", (string?)button.Attribute("Click"));
+
+        var menuItem = document.Descendants()
+            .Single(element =>
+                (string?)element.Attribute(xaml + "Name") == "ConfirmCorrectionMenuItem");
+        Assert.Equal("補正を確定", (string?)menuItem.Attribute("Text"));
+        Assert.Equal("OnConfirmCorrectionClick", (string?)menuItem.Attribute("Click"));
     }
 
     private static string FindRepositoryRoot()

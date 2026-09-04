@@ -42,11 +42,13 @@ public sealed class StartupUpdateCoordinator
 
         try
         {
-            var candidate = await checker.CheckAsync(
+            var result = await checker.CheckAsync(
                 currentVersion,
                 ignoredVersion,
                 cancellationToken);
-            if (candidate is null || cancellationToken.IsCancellationRequested)
+            if (result.Status != UpdateCheckStatus.UpdateAvailable
+                || result.Candidate is not { } candidate
+                || cancellationToken.IsCancellationRequested)
             {
                 return;
             }

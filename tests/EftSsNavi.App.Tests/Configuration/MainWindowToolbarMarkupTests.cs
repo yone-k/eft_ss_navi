@@ -5,21 +5,55 @@ namespace EftSsNavi.App.Tests.Configuration;
 public sealed class MainWindowToolbarMarkupTests
 {
     [Fact]
-    public void ShouldExposeClearlyNamedMapActionsWithoutRecalibration()
+    public void ShouldAlignMapSelectionLeftAndFrequentActionsRight()
+    {
+        // Given: The main toolbar markup.
+        var document = LoadMarkup();
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var toolbar = document.Descendants().Single(element =>
+            (string?)element.Attribute(xaml + "Name") == "MainToolbar");
+
+        // When: The two toolbar groups are inspected.
+        var mapSelectionGroup = toolbar.Descendants().Single(element =>
+            (string?)element.Attribute(xaml + "Name") == "MapSelectionToolbarGroup");
+        var frequentActionsGroup = toolbar.Descendants().Single(element =>
+            (string?)element.Attribute(xaml + "Name") == "FrequentActionsToolbarGroup");
+
+        // Then: Map selection stays left while the frequent actions are right-aligned.
+        Assert.Equal("0", (string?)mapSelectionGroup.Attribute("Grid.Column"));
+        Assert.Equal("Left", (string?)mapSelectionGroup.Attribute("HorizontalAlignment"));
+        Assert.Equal("2", (string?)frequentActionsGroup.Attribute("Grid.Column"));
+        Assert.Equal("Right", (string?)frequentActionsGroup.Attribute("HorizontalAlignment"));
+        Assert.Contains(frequentActionsGroup.Descendants(), element =>
+            (string?)element.Attribute(xaml + "Name") == "RotateMapLeftButton");
+        Assert.Contains(frequentActionsGroup.Descendants(), element =>
+            (string?)element.Attribute(xaml + "Name") == "RotateMapRightButton");
+        Assert.Contains(frequentActionsGroup.Descendants(), element =>
+            (string?)element.Attribute("Content") == "マップ全体を表示");
+        Assert.Contains(frequentActionsGroup.Descendants(), element =>
+            (string?)element.Attribute(xaml + "Name") == "PartyButton");
+    }
+
+    [Fact]
+    public void ShouldKeepFrequentActionsAndHideManagementActions()
     {
         var document = LoadMarkup();
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var toolbar = document.Descendants().Single(element =>
+            (string?)element.Attribute(xaml + "Name") == "MainToolbar");
 
-        var buttonLabels = document.Descendants()
+        var buttonLabels = toolbar.Descendants()
             .Where(element => element.Name.LocalName == "Button")
             .Select(element => (string?)element.Attribute("Content"))
             .ToArray();
 
-        Assert.Contains("マップを追加", buttonLabels);
-        Assert.Contains("マップを削除", buttonLabels);
         Assert.Contains("マップ全体を表示", buttonLabels);
-        Assert.DoesNotContain("新規", buttonLabels);
-        Assert.DoesNotContain("削除", buttonLabels);
-        Assert.DoesNotContain("再校正", buttonLabels);
+        Assert.Contains("グループ", buttonLabels);
+        Assert.DoesNotContain("マップを追加", buttonLabels);
+        Assert.DoesNotContain("マップを削除", buttonLabels);
+        Assert.DoesNotContain("位置を補正", buttonLabels);
+        Assert.DoesNotContain(toolbar.Descendants(), element =>
+            (string?)element.Attribute(xaml + "Name") == "WatchDirectoryText");
     }
 
     [Fact]

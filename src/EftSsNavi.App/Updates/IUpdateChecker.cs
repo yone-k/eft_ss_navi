@@ -2,7 +2,7 @@ namespace EftSsNavi.App.Updates;
 
 public interface IUpdateChecker
 {
-    Task<UpdateCandidate?> CheckAsync(
+    Task<UpdateCheckResult> CheckAsync(
         Version currentVersion,
         string? ignoredVersion,
         CancellationToken cancellationToken = default);

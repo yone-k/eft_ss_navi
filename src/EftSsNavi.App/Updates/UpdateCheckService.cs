@@ -24,7 +24,7 @@ public sealed class UpdateCheckService : IUpdateChecker
         this.httpClient = httpClient;
     }
 
-    public async Task<UpdateCandidate?> CheckAsync(
+    public async Task<UpdateCheckResult> CheckAsync(
         Version currentVersion,
         string? ignoredVersion,
         CancellationToken cancellationToken = default)
@@ -36,7 +36,7 @@ public sealed class UpdateCheckService : IUpdateChecker
             var normalizedCurrent = NormalizeCurrentVersion(currentVersion);
             if (normalizedCurrent is null)
             {
-                return null;
+                return UpdateCheckResult.Failed;
             }
 
             using var request = new HttpRequestMessage(HttpMethod.Get, LatestReleaseUri);
@@ -49,7 +49,7 @@ public sealed class UpdateCheckService : IUpdateChecker
                 cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                return null;
+                return UpdateCheckResult.Failed;
             }
 
             await using var content = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -58,20 +58,25 @@ public sealed class UpdateCheckService : IUpdateChecker
                 cancellationToken: cancellationToken);
             if (release is null || release.Draft || release.Prerelease)
             {
-                return null;
+                return UpdateCheckResult.Failed;
             }
 
             var latestVersion = ParseReleaseTag(release.TagName);
-            if (latestVersion is null || latestVersion <= normalizedCurrent)
+            if (latestVersion is null)
             {
-                return null;
+                return UpdateCheckResult.Failed;
+            }
+
+            if (latestVersion <= normalizedCurrent)
+            {
+                return UpdateCheckResult.UpToDate;
             }
 
             var normalizedLatest = latestVersion.ToString(3);
             var ignored = ParseNormalizedVersion(ignoredVersion);
             if (ignored is not null && ignored == latestVersion)
             {
-                return null;
+                return UpdateCheckResult.Suppressed;
             }
 
             var expectedAssetName = $"EftSsNavi-{release.TagName}-win-x64.zip";
@@ -81,14 +86,19 @@ public sealed class UpdateCheckService : IUpdateChecker
                 || !Uri.TryCreate(asset.BrowserDownloadUrl, UriKind.Absolute, out var downloadUri)
                 || !string.Equals(downloadUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
             {
-                return null;
+                return UpdateCheckResult.Failed;
             }
 
-            return new UpdateCandidate(release.TagName!, normalizedLatest, downloadUri);
+            return UpdateCheckResult.Available(
+                new UpdateCandidate(release.TagName!, normalizedLatest, downloadUri));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return UpdateCheckResult.Canceled;
         }
         catch
         {
-            return null;
+            return UpdateCheckResult.Failed;
         }
     }
 
