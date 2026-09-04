@@ -30,7 +30,7 @@ public sealed class StartupUpdateCoordinatorTests
     public async Task ShouldCheckOnlyOnceAndSkipPromptWhenNoUpdateExists()
     {
         // Given: The update source reports no newer release.
-        var context = CreateContext(UpdatePromptChoice.Later, hasUpdate: false);
+        var context = CreateContext(UpdatePromptChoice.Later, UpdateCheckResult.UpToDate);
 
         // When: Startup runs with update checks enabled.
         await context.Coordinator.RunAsync(
@@ -43,6 +43,25 @@ public sealed class StartupUpdateCoordinatorTests
         Assert.Equal(new Version(0, 9, 0), context.Checker.CurrentVersion);
         Assert.Equal("0.10.0", context.Checker.IgnoredVersion);
         Assert.Equal(0, context.Prompt.ShowCount);
+    }
+
+    [Theory]
+    [InlineData(UpdateCheckStatus.UpToDate)]
+    [InlineData(UpdateCheckStatus.Failed)]
+    [InlineData(UpdateCheckStatus.Canceled)]
+    [InlineData(UpdateCheckStatus.Suppressed)]
+    public async Task ShouldNotPromptWhenNoUpdateIsAvailable(UpdateCheckStatus status)
+    {
+        // Given: The update check completes without an actionable update.
+        var context = CreateContext(UpdatePromptChoice.Later, CreateResult(status));
+
+        // When: Startup handles the explicit result.
+        await context.Coordinator.RunAsync(true, new Version(0, 9, 0), ignoredVersion: null);
+
+        // Then: Existing startup behavior remains silent.
+        Assert.Equal(1, context.Checker.CallCount);
+        Assert.Equal(0, context.Prompt.ShowCount);
+        Assert.Empty(context.Prompt.Errors);
     }
 
     [Theory]
@@ -169,11 +188,11 @@ public sealed class StartupUpdateCoordinatorTests
 
     private static TestContext CreateContext(
         UpdatePromptChoice choice,
-        bool hasUpdate = true,
+        UpdateCheckResult? result = null,
         bool launchSucceeds = true,
         bool saveSucceeds = true)
     {
-        var checker = new FakeUpdateChecker(hasUpdate ? Candidate : null);
+        var checker = new FakeUpdateChecker(result ?? UpdateCheckResult.Available(Candidate));
         var prompt = new FakeUpdatePrompt(choice);
         var launcher = new FakeExternalLinkLauncher(launchSucceeds);
         var store = new FakeUpdateSuppressionStore(saveSucceeds);
@@ -185,6 +204,15 @@ public sealed class StartupUpdateCoordinatorTests
             store);
     }
 
+    private static UpdateCheckResult CreateResult(UpdateCheckStatus status) => status switch
+    {
+        UpdateCheckStatus.UpToDate => UpdateCheckResult.UpToDate,
+        UpdateCheckStatus.Failed => UpdateCheckResult.Failed,
+        UpdateCheckStatus.Canceled => UpdateCheckResult.Canceled,
+        UpdateCheckStatus.Suppressed => UpdateCheckResult.Suppressed,
+        _ => throw new ArgumentOutOfRangeException(nameof(status)),
+    };
+
     private sealed record TestContext(
         StartupUpdateCoordinator Coordinator,
         FakeUpdateChecker Checker,
@@ -192,9 +220,9 @@ public sealed class StartupUpdateCoordinatorTests
         FakeExternalLinkLauncher Launcher,
         FakeUpdateSuppressionStore Store);
 
-    private sealed class FakeUpdateChecker(UpdateCandidate? candidate) : IUpdateChecker
+    private sealed class FakeUpdateChecker(UpdateCheckResult result) : IUpdateChecker
     {
-        public UpdateCandidate? Candidate { get; set; } = candidate;
+        public UpdateCheckResult Result { get; set; } = result;
 
         public int CallCount { get; private set; }
 
@@ -202,7 +230,7 @@ public sealed class StartupUpdateCoordinatorTests
 
         public string? IgnoredVersion { get; private set; }
 
-        public Task<UpdateCandidate?> CheckAsync(
+        public Task<UpdateCheckResult> CheckAsync(
             Version currentVersion,
             string? ignoredVersion,
             CancellationToken cancellationToken = default)
@@ -210,7 +238,7 @@ public sealed class StartupUpdateCoordinatorTests
             CallCount++;
             CurrentVersion = currentVersion;
             IgnoredVersion = ignoredVersion;
-            return Task.FromResult(Candidate);
+            return Task.FromResult(Result);
         }
     }
 

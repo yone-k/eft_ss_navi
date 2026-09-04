@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Globalization;
 using System.Reflection;
+using EftSsNavi.App.About;
 using EftSsNavi.App.Controls;
 using EftSsNavi.App.Imaging;
 using EftSsNavi.App.Monitoring;
@@ -48,6 +50,7 @@ public sealed partial class MainWindow : Window
     private readonly string _settingsPath;
     private readonly DispatcherQueueTimer _partyRefreshTimer;
     private readonly CancellationTokenSource _updateCheckCancellation = new();
+    private readonly SemaphoreSlim _updateCheckGate = new(1, 1);
     private IPartyCoordinator? _partyCoordinator;
     private PartyCoordinatorState _partyState = PartyCoordinatorState.Empty;
     private long _partyStateGeneration;
@@ -99,6 +102,7 @@ public sealed partial class MainWindow : Window
         _partyRefreshTimer.Interval = PartyUiState.RefreshInterval;
         _partyRefreshTimer.Tick += OnPartyRefreshTimerTick;
         _partyRefreshTimer.Start();
+        _profiles.CollectionChanged += OnProfilesChanged;
         AppWindow.Closing += OnAppWindowClosing;
         Closed += OnWindowClosed;
     }
@@ -112,7 +116,7 @@ public sealed partial class MainWindow : Window
 
         _initialized = true;
         await InitializeAsync();
-        _ = RunUpdateCheckAsync();
+        _ = RunStartupUpdateCheckAsync();
     }
 
     private async Task InitializeAsync()
@@ -222,7 +226,26 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private async void OnChooseWatchDirectoryClick(object sender, RoutedEventArgs e)
+    private async void OnChangeWatchDirectoryMenuClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = RootGrid.XamlRoot,
+            Title = "スクリーンショット監視先",
+            Content = _watchDirectory ?? "未設定",
+            PrimaryButtonText = "変更",
+            CloseButtonText = "キャンセル",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        await ChooseWatchDirectoryAsync();
+    }
+
+    private async Task ChooseWatchDirectoryAsync()
     {
         var result = await _pickerService.PickFolderAsync(this);
         if (!result.IsSuccess)
@@ -251,7 +274,6 @@ public sealed partial class MainWindow : Window
         {
             _screenshotMonitor.SetDirectory(directoryPath);
             _watchDirectory = Path.GetFullPath(directoryPath);
-            WatchDirectoryText.Text = _watchDirectory;
             _stateCoordinator.ChangeWatchDirectory(_watchDirectory);
             ApplyStateToView("監視を開始しました。次の有効なスクリーンショットを待っています。");
             if (persist)
@@ -312,13 +334,48 @@ public sealed partial class MainWindow : Window
         await ActivateProfileAsync(profile, persist: true);
     }
 
+    private void OnProfilesChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
+        RebuildMapSelectionMenu();
+
+    private void RebuildMapSelectionMenu()
+    {
+        SelectMapMenu.Items.Clear();
+        if (_profiles.Count == 0)
+        {
+            SelectMapMenu.Items.Add(new MenuFlyoutItem
+            {
+                Text = "マップが登録されていません",
+                IsEnabled = false,
+            });
+            return;
+        }
+
+        foreach (var profile in _profiles.OrderBy(
+                     profile => profile.DisplayName,
+                     StringComparer.OrdinalIgnoreCase))
+        {
+            var item = new RadioMenuFlyoutItem
+            {
+                Text = profile.DisplayName,
+                Tag = profile,
+                GroupName = "MapProfiles",
+                IsChecked = NamesEqual(profile.DisplayName, _selectedProfile?.DisplayName),
+            };
+            item.Click += OnProfileMenuItemClick;
+            SelectMapMenu.Items.Add(item);
+        }
+    }
+
     private void SetSelectedProfile(MapProfile? profile)
     {
         _selectedProfile = profile;
         ProfileMenuButton.Content = profile?.DisplayName ?? "マップを選択";
         RotateMapLeftButton.IsEnabled = profile is not null;
         RotateMapRightButton.IsEnabled = profile is not null;
-        UpdateCorrectionModeButtonAvailability(profile);
+        RotateMapLeftMenuItem.IsEnabled = profile is not null;
+        RotateMapRightMenuItem.IsEnabled = profile is not null;
+        UpdateCorrectionMenuAvailability(profile);
+        RebuildMapSelectionMenu();
     }
 
     private async Task ActivateProfileAsync(MapProfile profile, bool persist)
@@ -646,6 +703,8 @@ public sealed partial class MainWindow : Window
         SetBundledMapMarkers(previewProfile);
         ConfirmCorrectionButton.Visibility = Visibility.Visible;
         ConfirmCorrectionButton.IsEnabled = true;
+        ConfirmCorrectionMenuItem.Visibility = Visibility.Visible;
+        ConfirmCorrectionMenuItem.IsEnabled = true;
         SetStatus("補正位置をプレビューしています。「補正を確定」で保存するか、「補正をキャンセル」で元に戻せます。");
     }
 
@@ -688,6 +747,8 @@ public sealed partial class MainWindow : Window
 
         ConfirmCorrectionButton.Visibility = Visibility.Collapsed;
         ConfirmCorrectionButton.IsEnabled = false;
+        ConfirmCorrectionMenuItem.Visibility = Visibility.Collapsed;
+        ConfirmCorrectionMenuItem.IsEnabled = false;
         ApplyStateToView(
             $"校正点 {session.ReplacementIndex + 1} を置換します。赤い現在位置マーカーを正しい位置へドラッグしてください。");
         MapControl.ShowCalibrationAnchors(
@@ -748,7 +809,7 @@ public sealed partial class MainWindow : Window
                 CoordinatesText.Text = FormatCoordinates(observation);
                 FileNameText.Text = fileName;
                 UpdateProgressiveCalibrationPrompt(waitingForMapClick: true);
-                CorrectionModeButton.IsEnabled = false;
+                StartCorrectionMenuItem.IsEnabled = false;
                 SetStatus("検知した現在位置を、マップ上でクリックしてください。");
                 return;
             }
@@ -804,6 +865,13 @@ public sealed partial class MainWindow : Window
     private void OnPartyClick(object sender, RoutedEventArgs e)
     {
         ApplyPartyCoordinatorState(_partyCoordinator?.State ?? PartyCoordinatorState.Empty);
+        if (sender is MenuFlyoutItem)
+        {
+            PartyFlyout.ShowAt(PartyButton, new FlyoutShowOptions
+            {
+                Placement = FlyoutPlacementMode.BottomEdgeAlignedRight,
+            });
+        }
     }
 
     private async void OnHostPartyClick(object sender, RoutedEventArgs e)
@@ -1114,8 +1182,9 @@ public sealed partial class MainWindow : Window
     private void ApplyPartyUiState(PartyUiState state)
     {
         ProfileMenuButton.IsEnabled = state.MapActionsEnabled;
-        NewProfileButton.IsEnabled = state.MapActionsEnabled;
-        DeleteProfileButton.IsEnabled = state.MapActionsEnabled;
+        SelectMapMenu.IsEnabled = state.MapActionsEnabled;
+        AddMapMenuItem.IsEnabled = state.MapActionsEnabled;
+        DeleteMapMenuItem.IsEnabled = state.MapActionsEnabled;
         PartyNotJoinedPanel.Visibility = state.Role == PartyUiRole.NotJoined
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -1333,7 +1402,7 @@ public sealed partial class MainWindow : Window
             : "X, Y, Z: —";
         FileNameText.Text = state.FileName ?? "—";
         StatusText.Text = messageOverride ?? StatusMessage(state.Status);
-        CorrectionModeButton.IsEnabled =
+        StartCorrectionMenuItem.IsEnabled =
             PositionCorrectionAvailability.IsAvailable(_selectedProfile, _bundledProfiles)
             &&
             _progressiveCalibrationSession is null
@@ -1342,25 +1411,29 @@ public sealed partial class MainWindow : Window
             && state.MarkerPosition is not null;
     }
 
-    private void UpdateCorrectionModeButtonAvailability(MapProfile? profile)
+    private void UpdateCorrectionMenuAvailability(MapProfile? profile)
     {
         var available = PositionCorrectionAvailability.IsAvailable(profile, _bundledProfiles);
-        CorrectionModeButton.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
+        StartCorrectionMenuItem.IsEnabled = available;
         if (!available)
         {
-            CorrectionModeButton.IsEnabled = false;
+            StartCorrectionMenuItem.IsEnabled = false;
         }
     }
 
     private void SetCorrectionMode(bool enabled)
     {
         MapControl.IsMarkerCorrectionEnabled = enabled;
-        CorrectionModeButton.Content = enabled ? "補正をキャンセル" : "位置を補正";
+        StartCorrectionMenuItem.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
+        CancelCorrectionMenuItem.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        CancelCorrectionMenuItem.IsEnabled = enabled;
         if (!enabled)
         {
             MapControl.HideCalibrationAnchors();
             ConfirmCorrectionButton.Visibility = Visibility.Collapsed;
             ConfirmCorrectionButton.IsEnabled = false;
+            ConfirmCorrectionMenuItem.Visibility = Visibility.Collapsed;
+            ConfirmCorrectionMenuItem.IsEnabled = false;
         }
     }
 
@@ -1380,7 +1453,7 @@ public sealed partial class MainWindow : Window
 
     private void SetStatus(string message) => StatusText.Text = message;
 
-    private async Task RunUpdateCheckAsync()
+    private Task RunStartupUpdateCheckAsync() => RunSerializedUpdateCheckAsync(async cancellationToken =>
     {
         var currentVersion = Assembly.GetEntryAssembly()?.GetName().Version;
         if (currentVersion is null)
@@ -1401,7 +1474,64 @@ public sealed partial class MainWindow : Window
                 Environment.GetEnvironmentVariable("EFTSSNAVI_DISABLE_UPDATE_CHECK")),
             currentVersion,
             _ignoredUpdateVersion,
-            _updateCheckCancellation.Token);
+            cancellationToken);
+    });
+
+    private async void OnCheckForUpdatesClick(object sender, RoutedEventArgs e)
+    {
+        await RunSerializedUpdateCheckAsync(async cancellationToken =>
+        {
+            var coordinator = new ManualUpdateCoordinator(
+                new UpdateCheckService(UpdateHttpClient),
+                new WinUiManualUpdatePrompt(
+                    () => _isClosed ? null : RootGrid.XamlRoot,
+                    () => _isClosed),
+                new ShellExternalLinkLauncher());
+            await coordinator.RunAsync(
+                Assembly.GetEntryAssembly()?.GetName().Version,
+                cancellationToken);
+        });
+    }
+
+    private async Task RunSerializedUpdateCheckAsync(
+        Func<CancellationToken, Task> operation)
+    {
+        var entered = false;
+        try
+        {
+            await _updateCheckGate.WaitAsync(_updateCheckCancellation.Token);
+            entered = true;
+            if (_isClosed)
+            {
+                return;
+            }
+
+            CheckForUpdatesMenuItem.IsEnabled = false;
+            await operation(_updateCheckCancellation.Token);
+        }
+        catch (OperationCanceledException) when (_updateCheckCancellation.IsCancellationRequested)
+        {
+            // Closing the window cancels update work without showing another dialog.
+        }
+        finally
+        {
+            if (entered)
+            {
+                _updateCheckGate.Release();
+                if (!_isClosed)
+                {
+                    CheckForUpdatesMenuItem.IsEnabled = true;
+                }
+            }
+        }
+    }
+
+    private async void OnAboutClick(object sender, RoutedEventArgs e)
+    {
+        var coordinator = AboutCoordinator.CreateDefault(
+            () => _isClosed ? null : RootGrid.XamlRoot,
+            () => _isClosed);
+        await coordinator.ShowAsync(_updateCheckCancellation.Token);
     }
 
     private bool TrySaveIgnoredUpdateVersion(string normalizedVersion)
@@ -1562,6 +1692,7 @@ public sealed partial class MainWindow : Window
     private void OnWindowClosed(object sender, WindowEventArgs args)
     {
         _isClosed = true;
+        _profiles.CollectionChanged -= OnProfilesChanged;
         _updateCheckCancellation.Cancel();
         _updateCheckCancellation.Dispose();
         AppWindow.Closing -= OnAppWindowClosing;

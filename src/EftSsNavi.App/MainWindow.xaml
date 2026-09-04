@@ -6,52 +6,72 @@
     <Grid x:Name="RootGrid" Loaded="OnRootLoaded">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0" Padding="12" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+        <MenuBar x:Name="ApplicationMenuBar" Grid.Row="0">
+            <MenuBarItem x:Name="FileMenu" Title="ファイル">
+                <MenuFlyoutItem x:Name="ChangeWatchDirectoryMenuItem" Click="OnChangeWatchDirectoryMenuClick" Text="監視先を変更" />
+            </MenuBarItem>
+            <MenuBarItem x:Name="MapMenu" Title="マップ">
+                <MenuFlyoutSubItem x:Name="SelectMapMenu" Text="マップを選択">
+                    <MenuFlyoutItem x:Name="NoMapsMenuItem" Text="マップが登録されていません" IsEnabled="False" />
+                </MenuFlyoutSubItem>
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Name="AddMapMenuItem" Click="OnNewProfileClick" Text="マップを追加" />
+                <MenuFlyoutItem x:Name="DeleteMapMenuItem" Click="OnDeleteProfileClick" Text="マップを削除" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Name="StartCorrectionMenuItem" Click="OnCorrectionModeClick" Text="位置を補正" IsEnabled="False" />
+                <MenuFlyoutItem x:Name="CancelCorrectionMenuItem" Click="OnCorrectionModeClick" Text="補正をキャンセル" Visibility="Collapsed" />
+                <MenuFlyoutItem x:Name="ConfirmCorrectionMenuItem" Click="OnConfirmCorrectionClick" Text="補正を確定" Visibility="Collapsed" />
+            </MenuBarItem>
+            <MenuBarItem x:Name="ViewMenu" Title="表示">
+                <MenuFlyoutItem x:Name="RotateMapLeftMenuItem" Click="OnRotateMapLeftClick" Text="左へ90度回転" IsEnabled="False" />
+                <MenuFlyoutItem x:Name="RotateMapRightMenuItem" Click="OnRotateMapRightClick" Text="右へ90度回転" IsEnabled="False" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Name="FitMapMenuItem" Click="OnFitMapClick" Text="マップ全体を表示" />
+            </MenuBarItem>
+            <MenuBarItem x:Name="PartyMenu" Title="グループ">
+                <MenuFlyoutItem x:Name="OpenPartyMenuItem" Click="OnPartyClick" Text="グループを開く" />
+            </MenuBarItem>
+            <MenuBarItem x:Name="HelpMenu" Title="ヘルプ">
+                <MenuFlyoutItem x:Name="CheckForUpdatesMenuItem" Click="OnCheckForUpdatesClick" Text="アップデートを確認" IsEnabled="False" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Name="AboutMenuItem" Click="OnAboutClick" Text="バージョン情報" />
+            </MenuBarItem>
+        </MenuBar>
+
+        <Border x:Name="MainToolbar" Grid.Row="1" Padding="12" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
             <Grid ColumnSpacing="8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="220" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBlock VerticalAlignment="Center" Text="監視先" />
-                <TextBox x:Name="WatchDirectoryText" Grid.Column="1" IsReadOnly="True" PlaceholderText="スクリーンショット監視先を選択してください" />
-                <Button Grid.Column="2" Click="OnChooseWatchDirectoryClick" Content="変更" />
-                <TextBlock Grid.Column="3" Margin="12,0,0,0" VerticalAlignment="Center" Text="現在のマップ" />
-                <DropDownButton x:Name="ProfileMenuButton" Grid.Column="4" Click="OnProfileMenuClick" Content="マップを選択" HorizontalContentAlignment="Left" />
-                <Button x:Name="NewProfileButton" Grid.Column="5" Click="OnNewProfileClick" Content="マップを追加" />
-                <Button x:Name="DeleteProfileButton" Grid.Column="6" Click="OnDeleteProfileClick" Content="マップを削除" />
-                <Button x:Name="CorrectionModeButton" Grid.Column="7" Click="OnCorrectionModeClick" Content="位置を補正" IsEnabled="False" Visibility="Collapsed" />
-                <Button x:Name="ConfirmCorrectionButton" Grid.Column="8" Click="OnConfirmCorrectionClick" Content="補正を確定" Visibility="Collapsed" />
-                <Button x:Name="RotateMapLeftButton" Grid.Column="9" Click="OnRotateMapLeftClick" ToolTipService.ToolTip="マップを左へ90度回転" AutomationProperties.Name="マップを左へ90度回転" IsEnabled="False" Padding="8">
+                <StackPanel x:Name="MapSelectionToolbarGroup" Grid.Column="0" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left">
+                    <TextBlock VerticalAlignment="Center" Text="現在のマップ" />
+                    <DropDownButton x:Name="ProfileMenuButton" Width="220" Click="OnProfileMenuClick" Content="マップを選択" HorizontalContentAlignment="Left" />
+                </StackPanel>
+                <StackPanel x:Name="FrequentActionsToolbarGroup" Grid.Column="2" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                <Button x:Name="RotateMapLeftButton" Click="OnRotateMapLeftClick" ToolTipService.ToolTip="マップを左へ90度回転" AutomationProperties.Name="マップを左へ90度回転" IsEnabled="False" Padding="8">
                     <Viewbox Width="20" Height="20">
                         <Canvas Width="20" Height="20">
                             <Path Data="M 7,8 L 3,4 L 7,0 M 3,4 A 8,8 0 1 1 3,16" Stroke="{ThemeResource TextFillColorPrimaryBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
                         </Canvas>
                     </Viewbox>
                 </Button>
-                <Button x:Name="RotateMapRightButton" Grid.Column="10" Click="OnRotateMapRightClick" ToolTipService.ToolTip="マップを右へ90度回転" AutomationProperties.Name="マップを右へ90度回転" IsEnabled="False" Padding="8">
+                <Button x:Name="RotateMapRightButton" Click="OnRotateMapRightClick" ToolTipService.ToolTip="マップを右へ90度回転" AutomationProperties.Name="マップを右へ90度回転" IsEnabled="False" Padding="8">
                     <Viewbox Width="20" Height="20">
                         <Canvas Width="20" Height="20">
                             <Path Data="M 13,0 L 17,4 L 13,8 M 17,4 A 8,8 0 1 0 17,16" Stroke="{ThemeResource TextFillColorPrimaryBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
                         </Canvas>
                     </Viewbox>
                 </Button>
-                <Button Grid.Column="11" Click="OnFitMapClick" Content="マップ全体を表示" />
-                <Button x:Name="PartyButton" Grid.Column="12" Click="OnPartyClick" Content="グループ">
+                <Button Click="OnFitMapClick" Content="マップ全体を表示" />
+                <Button x:Name="ConfirmCorrectionButton" Click="OnConfirmCorrectionClick" Content="補正を確定" Visibility="Collapsed" />
+                <Button x:Name="PartyButton" Click="OnPartyClick" Content="グループ">
                     <Button.Flyout>
                         <Flyout x:Name="PartyFlyout" Placement="BottomEdgeAlignedRight">
                             <StackPanel Width="300" Spacing="12">
@@ -79,10 +99,11 @@
                         </Flyout>
                     </Button.Flyout>
                 </Button>
+                </StackPanel>
             </Grid>
         </Border>
 
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="320" />
@@ -155,6 +176,6 @@
             </Border>
         </Grid>
 
-        <TextBlock Grid.Row="2" Padding="12,6" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="ホイール: 拡大・縮小 / ドラッグ: マップを移動" />
+        <TextBlock Grid.Row="3" Padding="12,6" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="ホイール: 拡大・縮小 / ドラッグ: マップを移動" />
     </Grid>
 </Window>

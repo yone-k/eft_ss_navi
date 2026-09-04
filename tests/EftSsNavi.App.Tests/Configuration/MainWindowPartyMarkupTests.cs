@@ -181,20 +181,20 @@ public sealed class MainWindowPartyMarkupTests
     }
 
     [Fact]
-    public void ShouldNameMapButtonsThatParticipantStateDisables()
+    public void ShouldNameMapActionsThatParticipantStateDisables()
     {
         // Given: The main-window toolbar markup.
         var document = LoadMarkup();
 
         // When: The three participant-restricted map actions are located.
         var selector = FindNamedElement(document, "ProfileMenuButton");
-        var add = FindNamedElement(document, "NewProfileButton");
-        var delete = FindNamedElement(document, "DeleteProfileButton");
+        var add = FindNamedElement(document, "AddMapMenuItem");
+        var delete = FindNamedElement(document, "DeleteMapMenuItem");
 
         // Then: MainWindow can disable the actual controls, not only ignore their handlers.
         Assert.Equal("DropDownButton", selector.Name.LocalName);
-        Assert.Equal("Button", add.Name.LocalName);
-        Assert.Equal("Button", delete.Name.LocalName);
+        Assert.Equal("MenuFlyoutItem", add.Name.LocalName);
+        Assert.Equal("MenuFlyoutItem", delete.Name.LocalName);
     }
 
     private static XElement FindNamedElement(XDocument document, string name) =>

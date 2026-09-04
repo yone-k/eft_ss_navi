@@ -208,7 +208,7 @@ public sealed class MainWindowPartyIntegrationTests
     }
 
     [Fact]
-    public void ShouldApplyPartyMapAvailabilityToActualToolbarButtons()
+    public void ShouldApplyPartyMapAvailabilityToMapSelectorsAndManagementMenuItems()
     {
         // Given: MainWindow applies a pure PartyUiState snapshot.
         var source = LoadMainWindowSource();
@@ -216,10 +216,11 @@ public sealed class MainWindowPartyIntegrationTests
         // When: Its view-application path is inspected.
         var method = ExtractMethod(source, "private void ApplyPartyUiState");
 
-        // Then: All three map actions are controlled by the snapshot.
+        // Then: Map selection and management actions are controlled by the snapshot.
         Assert.Contains("ProfileMenuButton.IsEnabled", method, StringComparison.Ordinal);
-        Assert.Contains("NewProfileButton.IsEnabled", method, StringComparison.Ordinal);
-        Assert.Contains("DeleteProfileButton.IsEnabled", method, StringComparison.Ordinal);
+        Assert.Contains("SelectMapMenu.IsEnabled", method, StringComparison.Ordinal);
+        Assert.Contains("AddMapMenuItem.IsEnabled", method, StringComparison.Ordinal);
+        Assert.Contains("DeleteMapMenuItem.IsEnabled", method, StringComparison.Ordinal);
         Assert.Contains("MapActionsEnabled", method, StringComparison.Ordinal);
         Assert.Contains("PartySectionTitleText.Text", method, StringComparison.Ordinal);
         Assert.Contains("GroupSectionTitle", method, StringComparison.Ordinal);

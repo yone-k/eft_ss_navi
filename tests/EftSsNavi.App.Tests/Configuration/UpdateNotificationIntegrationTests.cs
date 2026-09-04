@@ -28,13 +28,39 @@ public sealed class UpdateNotificationIntegrationTests
 
         // Then: Loaded initialization starts a non-blocking, bounded check and shutdown cancels it.
         Assert.Contains("await InitializeAsync();", source);
-        Assert.Contains("_ = RunUpdateCheckAsync();", source);
+        Assert.Contains("_ = RunStartupUpdateCheckAsync();", source);
         Assert.Contains("TimeSpan.FromSeconds(5)", source);
         Assert.Contains("UpdateCheckPolicy.ShouldRun(", source);
         Assert.Contains("EFTSSNAVI_DISABLE_UPDATE_CHECK", source);
         Assert.Contains("_updateCheckCancellation.Cancel();", source);
         Assert.Contains("_ignoredUpdateVersion", source);
         Assert.Contains("_stunServers,\r\n            _ignoredUpdateVersion", source.ReplaceLineEndings("\r\n"));
+    }
+
+    [Fact]
+    public void ShouldConnectManualCheckAndSerializeItWithStartupCheck()
+    {
+        var source = ReadAppSource("MainWindow.xaml.cs");
+        var prompt = ReadAppSource("Updates", "WinUiManualUpdatePrompt.cs");
+
+        Assert.Contains("OnCheckForUpdatesClick", source);
+        Assert.Contains("ManualUpdateCoordinator", source);
+        Assert.Contains("_updateCheckGate", source);
+        Assert.Contains("CheckForUpdatesMenuItem.IsEnabled = false", source);
+        Assert.Contains("CheckForUpdatesMenuItem.IsEnabled = true", source);
+        Assert.Contains("現在のバージョン {currentVersion} は最新です。", prompt);
+        Assert.Contains("新しいバージョンがあります", prompt);
+        Assert.Contains("アップデートエラー", prompt);
+    }
+
+    [Fact]
+    public void ShouldConnectAboutMenuToInApplicationInformationDialogs()
+    {
+        var source = ReadAppSource("MainWindow.xaml.cs");
+
+        Assert.Contains("OnAboutClick", source);
+        Assert.Contains("AboutCoordinator.CreateDefault", source);
+        Assert.Contains("await coordinator.ShowAsync", source);
     }
 
     [Fact]
